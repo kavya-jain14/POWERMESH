@@ -3,6 +3,7 @@ import type {
   JobSubmission,
   ProviderHeartbeat,
   ProviderRegistration,
+  RequesterRegistration,
   RiskDecision,
   RiskTier,
   SignedJobOffer,
@@ -28,6 +29,14 @@ export interface ProviderNodeRecord extends ProviderRegistration {
   activeJobs: number;
   status: "OFFLINE" | "ONLINE" | "BUSY" | "DRAINING";
   lastHeartbeatAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequesterRecord {
+  id: string;
+  communityId: string | null;
+  status: "ACTIVE" | "SUSPENDED";
   createdAt: string;
   updatedAt: string;
 }
@@ -61,6 +70,8 @@ export function providerCanRunJob(
 export interface CoordinatorStore {
   readonly kind: "memory" | "postgres";
   close(): Promise<void>;
+  registerRequester(input: RequesterRegistration, tokenHash: string): Promise<RequesterRecord>;
+  authenticateRequester(tokenHash: string): Promise<RequesterRecord | null>;
   createPolicyCheckedJob(input: JobSubmission, risk: RiskDecision): Promise<JobRecord>;
   findJob(id: string): Promise<JobRecord | null>;
   transitionJob(

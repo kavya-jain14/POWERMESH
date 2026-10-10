@@ -12,14 +12,10 @@ const integration = describe.runIf(Boolean(connectionString));
 integration("PostgreSQL coordinator store", () => {
   const pool = createPostgresPool(connectionString as string);
   const store = new PostgresCoordinatorStore(pool);
-  const requesterId = randomUUID();
   const providerId = randomUUID();
 
   beforeAll(async () => {
-    await pool.query(`INSERT INTO users (id, role) VALUES ($1, 'REQUESTER'), ($2, 'PROVIDER')`, [
-      requesterId,
-      providerId,
-    ]);
+    await pool.query(`INSERT INTO users (id, role) VALUES ($1, 'PROVIDER')`, [providerId]);
   });
 
   afterAll(async () => {
@@ -27,6 +23,13 @@ integration("PostgreSQL coordinator store", () => {
   });
 
   it("persists an authenticated, one-time offer claim", async () => {
+    const requesterTokenHash = hashAgentToken(randomBytes(32).toString("base64url"));
+    const requester = await store.registerRequester(
+      { communityId: "ci-community" },
+      requesterTokenHash,
+    );
+    expect((await store.authenticateRequester(requesterTokenHash))?.id).toBe(requester.id);
+
     const tokenHash = hashAgentToken(randomBytes(32).toString("base64url"));
     const node = await store.registerProvider(
       {
@@ -54,7 +57,7 @@ integration("PostgreSQL coordinator store", () => {
 
     const job = await store.createPolicyCheckedJob(
       {
-        requesterId,
+        requesterId: requester.id,
         workload: {
           name: `ci-workload-${randomUUID()}`,
           version: "1.0.0",

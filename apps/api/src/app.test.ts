@@ -1,6 +1,20 @@
+import type { FastifyInstance } from "fastify";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "./app";
 import { createOfferSigner, verifyOfferSignature } from "./offers/signing";
+
+const enrollmentKey = "enrollment-test-key";
+
+async function enrollRequester(app: FastifyInstance) {
+  const response = await app.inject({
+    method: "POST",
+    url: "/v1/requesters/register",
+    headers: { "x-powermesh-enrollment-key": enrollmentKey },
+    payload: { communityId: "test-community" },
+  });
+  expect(response.statusCode).toBe(201);
+  return response.json() as { requester: { id: string }; requesterToken: string };
+}
 
 describe("coordinator API", () => {
   it("reports health", async () => {
@@ -41,12 +55,13 @@ describe("coordinator API", () => {
   });
 
   it("submits a bounded job after policy classification", async () => {
-    const app = buildApp();
+    const app = buildApp({ enrollmentKey });
+    const { requesterToken } = await enrollRequester(app);
     const response = await app.inject({
       method: "POST",
       url: "/v1/jobs",
+      headers: { authorization: `Bearer ${requesterToken}` },
       payload: {
-        requesterId: "11111111-1111-4111-8111-111111111111",
         workload: {
           name: "image-resize",
           version: "1.0.0",
@@ -68,12 +83,13 @@ describe("coordinator API", () => {
   });
 
   it("keeps open-web jobs outside the MVP", async () => {
-    const app = buildApp();
+    const app = buildApp({ enrollmentKey });
+    const { requesterToken } = await enrollRequester(app);
     const response = await app.inject({
       method: "POST",
       url: "/v1/jobs",
+      headers: { authorization: `Bearer ${requesterToken}` },
       payload: {
-        requesterId: "11111111-1111-4111-8111-111111111111",
         workload: {
           name: "web-crawler",
           version: "1.0.0",
@@ -94,10 +110,11 @@ describe("coordinator API", () => {
   });
 
   it("registers a provider and accepts its heartbeat", async () => {
-    const app = buildApp();
+    const app = buildApp({ enrollmentKey });
     const registration = await app.inject({
       method: "POST",
       url: "/v1/nodes/register",
+      headers: { "x-powermesh-enrollment-key": enrollmentKey },
       payload: {
         ownerId: "22222222-2222-4222-8222-222222222222",
         nodeName: "kavya-mac",
@@ -134,10 +151,16 @@ describe("coordinator API", () => {
 
   it("signs, approves, and claims an offer exactly once", async () => {
     const signer = createOfferSigner();
-    const app = buildApp({ offerSigner: signer, coordinatorKey: "coordinator-test-key" });
+    const app = buildApp({
+      offerSigner: signer,
+      coordinatorKey: "coordinator-test-key",
+      enrollmentKey,
+    });
+    const { requesterToken } = await enrollRequester(app);
     const registration = await app.inject({
       method: "POST",
       url: "/v1/nodes/register",
+      headers: { "x-powermesh-enrollment-key": enrollmentKey },
       payload: {
         ownerId: "22222222-2222-4222-8222-222222222222",
         nodeName: "secure-provider",
@@ -166,8 +189,8 @@ describe("coordinator API", () => {
     const submission = await app.inject({
       method: "POST",
       url: "/v1/jobs",
+      headers: { authorization: `Bearer ${requesterToken}` },
       payload: {
-        requesterId: "11111111-1111-4111-8111-111111111111",
         workload: {
           name: "thumbnail-render",
           version: "1.0.0",
@@ -232,16 +255,22 @@ describe("coordinator API", () => {
     expect(replay.statusCode).toBe(409);
     expect(replay.json().error).toBe("NONCE_ALREADY_USED");
 
-    const job = await app.inject({ method: "GET", url: `/v1/jobs/${jobId}` });
+    const job = await app.inject({
+      method: "GET",
+      url: `/v1/jobs/${jobId}`,
+      headers: { authorization: `Bearer ${requesterToken}` },
+    });
     expect(job.json().state).toBe("CLAIMED");
     await app.close();
   });
 
   it("rejects an offer when the provider lacks the requested capability", async () => {
-    const app = buildApp({ coordinatorKey: "coordinator-test-key" });
+    const app = buildApp({ coordinatorKey: "coordinator-test-key", enrollmentKey });
+    const { requesterToken } = await enrollRequester(app);
     const registration = await app.inject({
       method: "POST",
       url: "/v1/nodes/register",
+      headers: { "x-powermesh-enrollment-key": enrollmentKey },
       payload: {
         ownerId: "22222222-2222-4222-8222-222222222222",
         nodeName: "offline-only",
@@ -269,8 +298,8 @@ describe("coordinator API", () => {
     const submission = await app.inject({
       method: "POST",
       url: "/v1/jobs",
+      headers: { authorization: `Bearer ${requesterToken}` },
       payload: {
-        requesterId: "11111111-1111-4111-8111-111111111111",
         workload: {
           name: "large-render",
           version: "1.0.0",
@@ -293,6 +322,81 @@ describe("coordinator API", () => {
 
     expect(response.statusCode).toBe(409);
     expect(response.json().error).toBe("NODE_UNAVAILABLE");
+    await app.close();
+  });
+
+  it("rejects unauthenticated job access and provider enrollment", async () => {
+    const app = buildApp({ enrollmentKey });
+    const job = await app.inject({ method: "POST", url: "/v1/jobs", payload: {} });
+    const provider = await app.inject({
+      method: "POST",
+      url: "/v1/nodes/register",
+      payload: {
+        ownerId: "22222222-2222-4222-8222-222222222222",
+        nodeName: "untrusted-node",
+        os: "linux",
+        architecture: "x64",
+        agentVersion: "0.1.0",
+        cpuCores: 2,
+        memoryMb: 1024,
+        networkModes: ["OFFLINE"],
+        isolationLevels: ["CONTAINER_BASELINE"],
+      },
+    });
+
+    expect(job.statusCode).toBe(401);
+    expect(provider.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("prevents one requester from reading another requester's job", async () => {
+    const app = buildApp({ enrollmentKey });
+    const owner = await enrollRequester(app);
+    const stranger = await enrollRequester(app);
+    const submission = await app.inject({
+      method: "POST",
+      url: "/v1/jobs",
+      headers: { authorization: `Bearer ${owner.requesterToken}` },
+      payload: {
+        workload: {
+          name: "private-job",
+          version: "1.0.0",
+          imageDigest: `sha256:${"e".repeat(64)}`,
+        },
+        resources: {
+          cpu: 1,
+          memoryMb: 256,
+          timeoutSeconds: 60,
+          networkMode: "OFFLINE",
+        },
+      },
+    });
+    const jobId = submission.json().job.id;
+
+    const denied = await app.inject({
+      method: "GET",
+      url: `/v1/jobs/${jobId}`,
+      headers: { authorization: `Bearer ${stranger.requesterToken}` },
+    });
+    const allowed = await app.inject({
+      method: "GET",
+      url: `/v1/jobs/${jobId}`,
+      headers: { authorization: `Bearer ${owner.requesterToken}` },
+    });
+
+    expect(denied.statusCode).toBe(404);
+    expect(allowed.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("rate limits repeated requests", async () => {
+    const app = buildApp({ rateLimitMax: 2 });
+    await app.inject({ method: "GET", url: "/health" });
+    await app.inject({ method: "GET", url: "/health" });
+    const limited = await app.inject({ method: "GET", url: "/health" });
+
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json().error).toBe("RATE_LIMITED");
     await app.close();
   });
 });

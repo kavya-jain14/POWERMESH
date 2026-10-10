@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@fastify/rate-limit": "11.2.1",
     "@powermesh/contracts": "workspace:*",
     "fastify": "5.12.5",
     "pg": "8.23.1",
