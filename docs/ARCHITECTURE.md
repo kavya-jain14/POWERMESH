@@ -28,6 +28,13 @@ The coordinator is a control plane, not a remote shell relay. The Agent establis
 
 Terminal failure states are `FAILED`, `CANCELLED`, and `EXPIRED`. Every transition must be validated server-side and written as an append-only event.
 
+## Persistence boundary
+
+PostgreSQL stores users, provider capabilities, workload definitions, jobs, assignments, and job
+events. State changes lock the job row, validate the shared transition graph, update the current
+state, and append an event in one transaction. A database trigger rejects updates or deletes on
+`job_events`, so audit history cannot be silently rewritten by normal application queries.
+
 ## Cross-platform rule
 
 Jobs target capabilities, not operating systems. A node may advertise container baseline, gVisor, or microVM isolation only after a runtime probe succeeds. Unsupported jobs are never offered to that node.

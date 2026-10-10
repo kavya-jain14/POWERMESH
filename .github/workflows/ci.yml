@@ -11,6 +11,22 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://powermesh:powermesh@127.0.0.1:5432/powermesh
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: powermesh
+          POSTGRES_PASSWORD: powermesh
+          POSTGRES_USER: powermesh
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U powermesh -d powermesh"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/setup@v3
@@ -19,4 +35,5 @@ jobs:
           cache: true
           install: false
       - run: pnpm install --frozen-lockfile
+      - run: pnpm db:migrate
       - run: pnpm check

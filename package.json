@@ -9,6 +9,7 @@
   "scripts": {
     "build": "turbo build",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "db:migrate": "pnpm --filter @powermesh/api db:migrate",
     "dev": "turbo dev --parallel",
     "format": "biome check --write .",
     "infra:down": "docker compose down",
