@@ -1,0 +1,25 @@
+{
+  "name": "powermesh",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@12.10.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo build",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "dev": "turbo dev --parallel",
+    "format": "biome check --write .",
+    "infra:down": "docker compose down",
+    "infra:up": "docker compose up -d postgres",
+    "lint": "biome check .",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "turbo": "2.11.7",
+    "typescript": "7.0.2"
+  }
+}
