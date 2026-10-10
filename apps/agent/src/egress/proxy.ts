@@ -1,5 +1,9 @@
 import { lookup } from "node:dns/promises";
-import http, { type IncomingHttpHeaders, type OutgoingHttpHeaders } from "node:http";
+import http, {
+  type IncomingHttpHeaders,
+  type OutgoingHttpHeaders,
+  type ServerResponse,
+} from "node:http";
 import net from "node:net";
 import { type HostResolver, normalizeHostname, resolvePublicAddress } from "./policy";
 
@@ -24,49 +28,74 @@ function requestHeaders(headers: IncomingHttpHeaders): OutgoingHttpHeaders {
   };
 }
 
-function responseHeaders(headers: IncomingHttpHeaders): OutgoingHttpHeaders {
-  return {
-    "cache-control": headers["cache-control"],
-    "content-encoding": headers["content-encoding"],
-    "content-length": headers["content-length"],
-    "content-type": headers["content-type"],
-    etag: headers.etag,
-    expires: headers.expires,
-    "last-modified": headers["last-modified"],
-    location: headers.location,
-  };
+function applyResponseHeaders(response: ServerResponse, headers: IncomingHttpHeaders): void {
+  if (headers["cache-control"]) response.setHeader("cache-control", headers["cache-control"]);
+  if (headers["content-encoding"])
+    response.setHeader("content-encoding", headers["content-encoding"]);
+  if (headers["content-length"]) response.setHeader("content-length", headers["content-length"]);
+  if (headers["content-type"]) response.setHeader("content-type", headers["content-type"]);
+  if (headers.etag) response.setHeader("etag", headers.etag);
+  if (headers.expires) response.setHeader("expires", headers.expires);
+  if (headers["last-modified"]) response.setHeader("last-modified", headers["last-modified"]);
+  if (headers.location) response.setHeader("location", headers.location);
 }
 
 function safeStatusCode(statusCode: number | undefined): number {
   switch (statusCode) {
     case 200:
+      return 200;
     case 201:
+      return 201;
     case 202:
+      return 202;
     case 204:
+      return 204;
     case 206:
+      return 206;
     case 301:
+      return 301;
     case 302:
+      return 302;
     case 303:
+      return 303;
     case 304:
+      return 304;
     case 307:
+      return 307;
     case 308:
+      return 308;
     case 400:
+      return 400;
     case 401:
+      return 401;
     case 403:
+      return 403;
     case 404:
+      return 404;
     case 405:
+      return 405;
     case 409:
+      return 409;
     case 410:
+      return 410;
     case 412:
+      return 412;
     case 413:
+      return 413;
     case 415:
+      return 415;
     case 422:
+      return 422;
     case 429:
+      return 429;
     case 500:
+      return 500;
     case 502:
+      return 502;
     case 503:
+      return 503;
     case 504:
-      return statusCode;
+      return 504;
     default:
       return 502;
   }
@@ -119,10 +148,8 @@ export function createEgressProxy(options: EgressProxyOptions): http.Server {
       deadline.unref();
       upstream.once("close", () => clearTimeout(deadline));
       upstream.on("response", (upstreamResponse) => {
-        response.writeHead(
-          safeStatusCode(upstreamResponse.statusCode),
-          responseHeaders(upstreamResponse.headers),
-        );
+        response.statusCode = safeStatusCode(upstreamResponse.statusCode);
+        applyResponseHeaders(response, upstreamResponse.headers);
         upstreamResponse.on("data", (chunk: Buffer) => {
           try {
             consume(chunk.length);
