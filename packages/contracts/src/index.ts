@@ -2,6 +2,7 @@ export * from "./api";
 export * from "./artifacts";
 export * from "./capabilities";
 export * from "./entities";
+export * from "./execution";
 export * from "./offers";
 export * from "./platform";
 export * from "./provider";

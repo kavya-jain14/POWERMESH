@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { imageDigestSchema, workloadDefinitionSchema } from "./entities";
+import { imageDigestSchema, workloadDefinitionSchema, workloadParamValueSchema } from "./entities";
 import { riskTierSchema, workloadRequestSchema } from "./schemas";
 
 export const offerNonceSchema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -11,7 +11,7 @@ export const offerManifestSchema = z.object({
   nodeId: z.string().uuid(),
   workload: workloadDefinitionSchema,
   resources: workloadRequestSchema,
-  params: z.record(z.string(), z.string()),
+  params: z.record(z.string(), workloadParamValueSchema),
   inputDigests: z.array(imageDigestSchema),
   riskTier: riskTierSchema,
   nonce: offerNonceSchema,
