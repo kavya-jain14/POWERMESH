@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { Banner, Button, Dialog, Digest, Icon, KeyValue, cx, useAnnouncer } from "@powermesh/ui";
 import type { Offer } from "@/contracts-draft/types";
-import { contentTypeLabel, formatBytes, formatDuration } from "@/contracts-draft/format";
+import { contentTypeLabel, formatBytes, formatDuration, formatMaybeBytes } from "@/contracts-draft/format";
 import { getWorkload } from "@/contracts-draft/workloads";
 import { ApiError, api } from "@/lib/api";
 import { useNow } from "@/lib/hooks";
@@ -142,7 +142,7 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
             items={[
               { label: "Inputs", value: `${offer.inputs.count} file${offer.inputs.count === 1 ? "" : "s"}` },
               { label: "Types", value: offer.inputs.contentTypes.map(contentTypeLabel).join(", ") },
-              { label: "Total size", value: formatBytes(offer.inputs.totalBytes) },
+              { label: "Total size", value: formatMaybeBytes(offer.inputs.totalBytes) },
               { label: "Mounted as", value: "Read-only /input" },
               ...Object.entries(offer.params).map(([k, v]) => ({
                 key: k,
@@ -162,9 +162,9 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
             items={[
               { label: "CPU", value: `${offer.limits.cpuCores} core` },
               { label: "Memory", value: formatBytes(offer.limits.memoryBytes) },
-              { label: "Disk", value: formatBytes(offer.limits.diskBytes) },
+              { label: "Disk", value: formatMaybeBytes(offer.limits.diskBytes) },
               { label: "Time", value: formatDuration(offer.limits.wallClockSeconds) },
-              { label: "Processes", value: offer.limits.pids },
+              { label: "Processes", value: offer.limits.pids ?? "Not reported" },
               { label: "Network", value: `${NETWORK_COPY[offer.networkMode].label} — ${NETWORK_COPY[offer.networkMode].short}` },
             ]}
           />

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Badge, Banner, Button, Digest, Icon, KeyValue, Panel } from "@powermesh/ui";
 import type { Artifact, Job } from "@/contracts-draft/types";
-import { contentTypeLabel, formatBytes, formatTime } from "@/contracts-draft/format";
+import { contentTypeLabel, formatBytes, formatMaybeBytes, formatTime } from "@/contracts-draft/format";
 import { useNow } from "@/lib/hooks";
 import styles from "./Recorder.module.css";
 
@@ -36,7 +36,7 @@ export function ResultPanel({ job, onRefresh }: { job: Job; onRefresh: () => Pro
     <Panel
       variant="strong"
       title="Validated result"
-      description={`${artifacts.length} file${artifacts.length === 1 ? "" : "s"} · ${formatBytes(job.inputs.totalBytes)} in → ${formatBytes(total)} out`}
+      description={`${artifacts.length} file${artifacts.length === 1 ? "" : "s"} · ${formatMaybeBytes(job.inputs.totalBytes)} in → ${formatBytes(total)} out`}
       actions={<Badge tone="success" icon="shield">All checks passed</Badge>}
     >
       {expired ? (

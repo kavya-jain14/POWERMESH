@@ -6,8 +6,8 @@ import styles from "./Recorder.module.css";
 
 const MILESTONES: Array<{ label: string; states: JobState[] }> = [
   { label: "Submitted", states: ["SUBMITTED"] },
-  { label: "Queued", states: ["QUEUED"] },
-  { label: "Offered", states: ["OFFERED"] },
+  { label: "Queued", states: ["QUEUED", "POLICY_CHECKED"] },
+  { label: "Offered", states: ["OFFERED", "APPROVED"] },
   { label: "Claimed", states: ["CLAIMED", "STAGING"] },
   { label: "Running", states: ["RUNNING"] },
   { label: "Validating", states: ["VALIDATING"] },

@@ -12,7 +12,7 @@ import manifest from "./sample-manifest.json";
 import { PROVIDER_NODE_ID, SAMPLE_SET_ID, USERS, seedNodes, seedPolicies, type MockUser } from "./seed";
 import { classifyRisk } from "@/contracts-draft/risk";
 import { getWorkload, IMAGE_TRANSFORM } from "@/contracts-draft/workloads";
-import { formatBytes } from "@/contracts-draft/format";
+import { formatBytes, formatInputs } from "@/contracts-draft/format";
 import {
   RISK_ORDER,
   canTransition,
@@ -558,7 +558,7 @@ function usageAt(job: Job, done: number, total: number, startedAt: number): Job[
   return {
     cpuCores: Math.round((0.55 + 0.35 * Math.random()) * 100) / 100,
     memoryBytes: Math.round((150 + 170 * Math.random()) * 1024 * 1024),
-    diskBytes: Math.round(job.inputs.totalBytes * (1 + 0.6 * frac)),
+    diskBytes: Math.round((job.inputs.totalBytes ?? 0) * (1 + 0.6 * frac)),
     elapsedSeconds: Math.round((Date.now() - startedAt) / 1000),
   };
 }
@@ -574,7 +574,7 @@ function startRun(job: Job, node: ProviderNode) {
 
   schedule(job.id, 1000, () => {
     transition(job, "STAGING", agent, { message: "Staging inputs read-only." });
-    log(job, agent, `Staged ${job.inputs.count} file(s), ${formatBytes(job.inputs.totalBytes)}, into /input (read-only). Input digest verified.`);
+    log(job, agent, `Staged ${formatInputs(job.inputs)} into /input (read-only). Input digest verified.`);
     schedule(job.id, 1400, () => {
       const startedAt = Date.now();
       job.progress = { done: 0, total: job.inputs.count };

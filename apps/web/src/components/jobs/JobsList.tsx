@@ -3,11 +3,16 @@
 import Link from "next/link";
 import { Banner, Button, EmptyState, Icon, Mono, RiskBadge, Skeleton, buttonClassName } from "@powermesh/ui";
 import type { Role } from "@/contracts-draft/types";
-import { formatBytes, formatRelative } from "@/contracts-draft/format";
+import { formatInputs, formatRelative } from "@/contracts-draft/format";
 import { api } from "@/lib/api";
 import { useNow, useResource } from "@/lib/hooks";
 import { JobStateBadge } from "@/components/common/JobBits";
 import styles from "./Jobs.module.css";
+
+/** Coordinator ids are UUIDs; the first block is enough to tell jobs apart on a card. */
+function displayJobId(id: string): string {
+  return /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(id) ? `job ${id.slice(0, 8)}` : id;
+}
 
 export function JobsList({ role }: { role: Role }) {
   const jobs = useResource(() => api.listJobs(), { intervalMs: 4000 });
@@ -65,8 +70,8 @@ export function JobsList({ role }: { role: Role }) {
             <li key={job.id} className={styles.card}>
               <div className={styles.head}>
                 <h2 className={styles.jobId}>
-                  <Link href={`/jobs/${job.id}`} className={styles.cardLink}>
-                    <Mono>{job.id}</Mono>
+                  <Link href={`/jobs/${job.id}`} className={styles.cardLink} title={job.id}>
+                    <Mono>{displayJobId(job.id)}</Mono>
                   </Link>
                 </h2>
                 <JobStateBadge state={job.state} size="lg" />
@@ -83,7 +88,7 @@ export function JobsList({ role }: { role: Role }) {
                 <div>
                   <dt className={styles.factLabel}>Inputs</dt>
                   <dd className={styles.factValue}>
-                    {job.inputs.count} {job.inputs.count === 1 ? "file" : "files"} · {formatBytes(job.inputs.totalBytes)}
+                    {formatInputs(job.inputs)}
                   </dd>
                 </div>
                 <div>

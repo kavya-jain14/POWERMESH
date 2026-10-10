@@ -18,8 +18,8 @@ import {
 } from "@powermesh/ui";
 import type { InputFileMeta, NetworkMode, WorkloadDefinition } from "@/contracts-draft/types";
 import { classifyRisk } from "@/contracts-draft/risk";
-import { contentTypeLabel, formatBytes, formatDuration } from "@/contracts-draft/format";
-import { ApiError, IS_MOCK, api } from "@/lib/api";
+import { contentTypeLabel, formatBytes, formatDuration, formatMaybeBytes } from "@/contracts-draft/format";
+import { ApiError, IS_LIVE, IS_MOCK, api } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import { NETWORK_COPY } from "@/lib/copy";
 import { RiskExplanationView } from "@/components/common/JobBits";
@@ -261,7 +261,7 @@ export function Composer() {
                   <div className="pm-stack-sm">
                     <Field
                       label="Choose images"
-                      hint={IS_MOCK ? "Mock mode: only file names, types and sizes are sent — outputs use the demo images." : "Files are uploaded to scoped, short-lived storage and staged read-only for the job."}
+                      hint={IS_LIVE ? "Only file names, types and sizes are sent — the coordinator has no upload storage yet, so it receives no input digests for your own files." : IS_MOCK ? "Mock mode: only file names, types and sizes are sent — outputs use the demo images." : "Files are uploaded to scoped, short-lived storage and staged read-only for the job."}
                       error={showErrors ? allErrors.inputs : undefined}
                     >
                       <input type="file" multiple accept={workload.inputSchema.accept.join(",")} onChange={onUpload} className={styles.file} />
@@ -331,9 +331,9 @@ export function Composer() {
                     items={[
                       { label: "CPU", value: `${workload.limits.cpuCores} core` },
                       { label: "Memory", value: formatBytes(workload.limits.memoryBytes) },
-                      { label: "Disk", value: formatBytes(workload.limits.diskBytes) },
+                      { label: "Disk", value: formatMaybeBytes(workload.limits.diskBytes) },
                       { label: "Time", value: formatDuration(workload.limits.wallClockSeconds) },
-                      { label: "Processes", value: workload.limits.pids },
+                      { label: "Processes", value: workload.limits.pids ?? "Not reported" },
                       { label: "Isolation", value: workload.minIsolation === "docker-rootless" ? "Rootless container or stronger" : workload.minIsolation },
                     ]}
                   />

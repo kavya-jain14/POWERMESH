@@ -1,6 +1,11 @@
 /**
- * Browser API client. Paths mirror master plan §7 "API contract v0" so pointing
- * NEXT_PUBLIC_POWERMESH_API at Kavya's coordinator is a config change, not a code change.
+ * Browser API client. Paths mirror master plan §7 "API contract v0".
+ *
+ * Modes (NEXT_PUBLIC_POWERMESH_MODE in the root .env):
+ *  - "mock" (default): everything talks to the in-app mock coordinator under /api/mock.
+ *  - "live": job endpoints go to /api/live/v1, a server-side bridge to the real coordinator
+ *    (apps/api). Surfaces with no coordinator API yet — offers, nodes, policy, network, audit and
+ *    the local Agent — stay on the mock until those endpoints exist.
  */
 import type {
   AgentLocalState,
@@ -17,8 +22,13 @@ import type {
   WorkloadDefinition,
 } from "@/contracts-draft/types";
 
+export const MODE: "mock" | "live" = process.env.NEXT_PUBLIC_POWERMESH_MODE === "live" ? "live" : "mock";
+export const IS_LIVE = MODE === "live";
 export const API_BASE = process.env.NEXT_PUBLIC_POWERMESH_API ?? "/api/mock/v1";
+/** Jobs (submit, list, detail, events, cancel) and the workload catalogue. */
+export const JOBS_BASE = IS_LIVE ? "/api/live/v1" : API_BASE;
 export const AGENT_BASE = process.env.NEXT_PUBLIC_POWERMESH_AGENT ?? "/api/mock/agent";
+/** True while any surface still reads mock data (role switcher, demo controls, the notice strip). */
 export const IS_MOCK = API_BASE.startsWith("/api/mock");
 
 export class ApiError extends Error {
@@ -55,12 +65,13 @@ async function request<T>(base: string, path: string, init?: RequestInit): Promi
 const json = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 
 export const api = {
-  listJobs: () => request<Job[]>(API_BASE, "/jobs"),
-  getJob: (id: string) => request<Job>(API_BASE, `/jobs/${encodeURIComponent(id)}`),
-  submitJob: (body: SubmitJobRequest) => request<Job>(API_BASE, "/jobs", json(body)),
-  cancelJob: (id: string) => request<Job>(API_BASE, `/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
-  jobEventsUrl: (id: string, after = 0) => `${API_BASE}/jobs/${encodeURIComponent(id)}/events${after ? `?after=${after}` : ""}`,
-  listWorkloads: () => request<WorkloadDefinition[]>(API_BASE, "/workloads"),
+  listJobs: () => request<Job[]>(JOBS_BASE, "/jobs"),
+  getJob: (id: string) => request<Job>(JOBS_BASE, `/jobs/${encodeURIComponent(id)}`),
+  submitJob: (body: SubmitJobRequest) => request<Job>(JOBS_BASE, "/jobs", json(body)),
+  cancelJob: (id: string) => request<Job>(JOBS_BASE, `/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
+  jobEventsUrl: (id: string, after = 0) => `${JOBS_BASE}/jobs/${encodeURIComponent(id)}/events${after ? `?after=${after}` : ""}`,
+  listWorkloads: () => request<WorkloadDefinition[]>(JOBS_BASE, "/workloads"),
+  liveHealth: () => request<{ reachable: boolean; storage?: string; url: string }>("/api/live/v1", "/health"),
   getOffer: (id: string) => request<Offer>(API_BASE, `/offers/${encodeURIComponent(id)}`),
   decideOffer: (id: string, decision: OfferDecisionRequest["decision"]) =>
     request<Offer>(API_BASE, `/offers/${encodeURIComponent(id)}/decision`, json({ decision })),

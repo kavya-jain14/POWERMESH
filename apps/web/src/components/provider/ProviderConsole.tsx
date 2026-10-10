@@ -21,7 +21,7 @@ import {
   useAnnouncer,
 } from "@powermesh/ui";
 import type { AgentLocalState, IsolationLevel, Offer } from "@/contracts-draft/types";
-import { formatBytes, formatDuration, formatRelative, formatTime } from "@/contracts-draft/format";
+import { formatBytes, formatDuration, formatInputs, formatRelative, formatTime } from "@/contracts-draft/format";
 import { ApiError, agent, api } from "@/lib/api";
 import { useNow, useResource } from "@/lib/hooks";
 import { NETWORK_COPY, STATE_COPY, describeJob } from "@/lib/copy";
@@ -222,7 +222,7 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
               <div className="pm-row">
                 <RiskBadge tier={s.pendingOffer.risk.tier} />
                 <span>
-                  {s.pendingOffer.inputs.count} images · {formatBytes(s.pendingOffer.inputs.totalBytes)} · {NETWORK_COPY[s.pendingOffer.networkMode].label}
+                  {formatInputs(s.pendingOffer.inputs, "image")} · {NETWORK_COPY[s.pendingOffer.networkMode].label}
                 </span>
                 <span className="pm-small">Expires in {Math.max(0, Math.ceil((Date.parse(s.pendingOffer.expiresAt) - now) / 1000))}s</span>
               </div>

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon, Select, cx } from "@powermesh/ui";
 import type { Role } from "@/contracts-draft/types";
-import { IS_MOCK, devApi } from "@/lib/api";
+import { IS_LIVE, IS_MOCK, devApi } from "@/lib/api";
 import { ROLE_LABEL } from "@/lib/copy";
 import { NAV, isActive } from "./nav";
 import { Logo } from "./Logo";
@@ -126,7 +126,12 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
       </aside>
 
       <main id="main" className={styles.main} tabIndex={-1}>
-        {IS_MOCK ? (
+        {IS_LIVE ? (
+          <p className={styles.mockStrip}>
+            <Icon name="info" size={14} />
+            Live coordinator for jobs. Provider, offers, network and audit still use mock data — the API has no endpoints for them yet.
+          </p>
+        ) : IS_MOCK ? (
           <p className={styles.mockStrip}>
             <Icon name="info" size={14} />
             Mock coordinator — draft contracts and fixture data. Not connected to real providers.

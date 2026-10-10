@@ -20,7 +20,7 @@ import {
   type Tone,
 } from "@powermesh/ui";
 import { TRANSITIONS, isTerminal, type Role } from "@/contracts-draft/types";
-import { formatBytes, formatDateTime, formatDuration, formatRelative } from "@/contracts-draft/format";
+import { formatBytes, formatDateTime, formatDuration, formatInputs, formatMaybeBytes, formatRelative } from "@/contracts-draft/format";
 import { ApiError, api } from "@/lib/api";
 import { useJobStream, useNow, type StreamStatus } from "@/lib/hooks";
 import { NETWORK_COPY, STATE_COPY, describeJob } from "@/lib/copy";
@@ -182,7 +182,7 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
               valueText={`${job.progress.done} of ${job.progress.total}`}
             />
           ) : null}
-          {["SUBMITTED", "QUEUED", "OFFERED", "CLAIMED", "STAGING", "VALIDATING"].includes(job.state) ? <ProgressBar label="Working" valueText={STATE_COPY[job.state].badge} /> : null}
+          {["SUBMITTED", "QUEUED", "POLICY_CHECKED", "OFFERED", "APPROVED", "CLAIMED", "STAGING", "VALIDATING"].includes(job.state) ? <ProgressBar label="Working" valueText={STATE_COPY[job.state].badge} /> : null}
           <Milestones events={events} current={job.state} />
         </div>
 
@@ -210,7 +210,7 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
                   <>
                     <LimitMeter label="CPU" used={job.usage.cpuCores} limit={job.limits.cpuCores} format={(n) => `${n.toFixed(2)} core`} />
                     <LimitMeter label="Memory" used={job.usage.memoryBytes} limit={job.limits.memoryBytes} format={formatBytes} />
-                    <LimitMeter label="Disk" used={job.usage.diskBytes} limit={job.limits.diskBytes} format={formatBytes} />
+                    {job.limits.diskBytes != null ? <LimitMeter label="Disk" used={job.usage.diskBytes} limit={job.limits.diskBytes} format={formatBytes} /> : null}
                     <LimitMeter label="Time" used={job.usage.elapsedSeconds} limit={job.limits.wallClockSeconds} format={formatDuration} />
                   </>
                 ) : (
@@ -219,7 +219,7 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
                     items={[
                       { label: "CPU", value: `${job.limits.cpuCores} core` },
                       { label: "Memory", value: formatBytes(job.limits.memoryBytes) },
-                      { label: "Disk", value: formatBytes(job.limits.diskBytes) },
+                      { label: "Disk", value: formatMaybeBytes(job.limits.diskBytes) },
                       { label: "Time", value: formatDuration(job.limits.wallClockSeconds) },
                     ]}
                   />
@@ -234,9 +234,9 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
                   { label: "Workload digest", value: <Digest value={job.workloadDigest} label="workload digest" /> },
                   {
                     label: "Inputs",
-                    value: `${job.inputs.count} file${job.inputs.count === 1 ? "" : "s"} · ${formatBytes(job.inputs.totalBytes)}`,
+                    value: formatInputs(job.inputs),
                   },
-                  { label: "Input digest", value: <Digest value={job.inputDigest} label="input digest" /> },
+                  { label: "Input digest", value: job.inputDigest ? <Digest value={job.inputDigest} label="input digest" /> : "None sent" },
                   { label: "Network", value: `${NETWORK_COPY[job.networkMode].label} — ${NETWORK_COPY[job.networkMode].short}` },
                   {
                     label: "Runs on",

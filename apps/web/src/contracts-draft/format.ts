@@ -20,6 +20,17 @@ export function formatBytes(bytes: number): string {
   return `${v >= 10 || Number.isInteger(v) ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
 }
 
+/** For values a source may not report: never print an invented number. */
+export function formatMaybeBytes(bytes: number | null | undefined): string {
+  return bytes == null ? "Not reported" : formatBytes(bytes);
+}
+
+/** "3 files · 7.3 MB", or "3 files" when sizes weren't reported. */
+export function formatInputs(inputs: { count: number; totalBytes: number | null }, noun = "file"): string {
+  const files = `${inputs.count} ${noun}${inputs.count === 1 ? "" : "s"}`;
+  return inputs.totalBytes == null ? files : `${files} · ${formatBytes(inputs.totalBytes)}`;
+}
+
 export function formatDuration(totalSeconds: number): string {
   const s = Math.max(0, Math.round(totalSeconds));
   if (s < 60) return `${s}s`;

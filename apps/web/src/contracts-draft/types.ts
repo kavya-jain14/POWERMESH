@@ -16,8 +16,10 @@ export const JOB_STATES = [
   "SUBMITTED",
   "REJECTED",
   "QUEUED",
+  "POLICY_CHECKED",
   "OFFERED",
   "DECLINED",
+  "APPROVED",
   "EXPIRED",
   "CLAIMED",
   "STAGING",
@@ -46,6 +48,10 @@ export const TRANSITIONS: Readonly<Record<JobState, readonly JobState[]>> = {
   DRAFT: ["SUBMITTED", "CANCELLED"],
   SUBMITTED: ["REJECTED", "QUEUED"],
   QUEUED: ["OFFERED", "CANCELLED", "EXPIRED"],
+  // Coordinator v0 states (`@powermesh/contracts` jobStates). Shown verbatim in live mode; the mock
+  // keeps the master-plan table until S1 freezes one state machine for both.
+  POLICY_CHECKED: ["OFFERED", "FAILED", "CANCELLED"],
+  APPROVED: ["CLAIMED", "EXPIRED", "CANCELLED"],
   OFFERED: ["CLAIMED", "DECLINED", "EXPIRED"],
   CLAIMED: ["STAGING", "FAILED", "CANCELLED"],
   STAGING: ["RUNNING", "FAILED", "CANCELLED"],
@@ -113,9 +119,10 @@ export type TrustTier = "community" | "verified" | "dedicated";
 export interface ResourceLimits {
   cpuCores: number;
   memoryBytes: number;
-  diskBytes: number;
+  /** null = not part of the job's contract (coordinator v0 has no disk or PID limit fields). */
+  diskBytes: number | null;
   wallClockSeconds: number;
-  pids: number;
+  pids: number | null;
 }
 
 /* ── Workloads ──────────────────────────────────────────────────────────── */
@@ -163,7 +170,8 @@ export interface InputFileMeta {
 export interface InputSummary {
   count: number;
   contentTypes: string[];
-  totalBytes: number;
+  /** null when the source didn't report sizes (coordinator v0 stores input digests only). */
+  totalBytes: number | null;
   /** Present only for the requester who owns the job and for admins. */
   files?: InputFileMeta[];
 }

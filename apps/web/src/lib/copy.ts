@@ -19,6 +19,20 @@ export const STATE_COPY: Record<JobState, StateCopy> = {
   SUBMITTED: { badge: "Checking", tone: "info", icon: "clock", requester: "Checking your job against policy…", provider: "—" },
   REJECTED: { badge: "Rejected", tone: "danger", icon: "x", requester: "Rejected before scheduling.", provider: "—" },
   QUEUED: { badge: "Queued", tone: "info", icon: "clock", requester: "Waiting for a compatible provider.", provider: "—" },
+  POLICY_CHECKED: {
+    badge: "Policy checked",
+    tone: "info",
+    icon: "shield",
+    requester: "Passed the policy check. Waiting to be offered to a compatible provider.",
+    provider: "—",
+  },
+  APPROVED: {
+    badge: "Approved",
+    tone: "info",
+    icon: "check",
+    requester: "A provider approved. Waiting for their Agent to claim it.",
+    provider: "You approved. Your Agent claims it next.",
+  },
   OFFERED: {
     badge: "Offered",
     tone: "info",
