@@ -8,6 +8,7 @@ const baseJob: SandboxJob = {
   image: `ghcr.io/powermesh/worker@sha256:${digest}`,
   isolation: "GVISOR",
   networkMode: "OFFLINE",
+  allowedHosts: [],
   limits: {
     cpu: 2,
     memoryMb: 512,
@@ -49,5 +50,26 @@ describe("Docker sandbox command", () => {
     expect(() =>
       buildDockerArgs({ ...baseJob, networkMode: "RESTRICTED" }, "powermesh-test"),
     ).toThrow(/controlled egress/);
+  });
+
+  it("routes restricted traffic only through the fixed proxy on an internal network", () => {
+    const args = buildDockerArgs(
+      {
+        ...baseJob,
+        networkMode: "RESTRICTED",
+        allowedHosts: ["api.example.com"],
+        restrictedNetwork: {
+          networkName: "powermesh-job-abc",
+          workloadIp: "10.64.1.3",
+          proxyIp: "10.64.1.2",
+        },
+      },
+      "powermesh-restricted",
+    );
+    expect(args).toContain("--network=powermesh-job-abc");
+    expect(args).toContain("--ip=10.64.1.3");
+    expect(args).toContain("--dns=127.0.0.1");
+    expect(args).toContain("HTTP_PROXY=http://10.64.1.2:8080");
+    expect(args).not.toContain("--network=bridge");
   });
 });

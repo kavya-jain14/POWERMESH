@@ -20,6 +20,7 @@ export function sandboxJobFromVerifiedOffer(
     image: offer.manifest.workload.imageDigest,
     isolation,
     networkMode: offer.manifest.resources.networkMode,
+    allowedHosts: offer.manifest.resources.allowedHosts,
     limits: {
       cpu: offer.manifest.resources.cpu,
       memoryMb: offer.manifest.resources.memoryMb,

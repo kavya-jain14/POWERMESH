@@ -67,4 +67,11 @@ part of the software supply chain.
 - CPU, memory, swap, PID, temporary filesystem, wall-clock, and captured-output limits are mandatory.
 - The local kill switch terminates both the client process and the named container.
 - Outputs are size-limited, type checked, magic-byte checked, and hashed before acceptance.
-- Networked execution fails closed until the controlled egress proxy is enabled.
+- Restricted jobs run on a per-job internal Docker network with a fixed proxy IP and no usable DNS.
+- Only the digest-pinned proxy sidecar joins both the internal network and a separate uplink network.
+- The proxy uses exact normalized host allowlists, permits only HTTP/80 and HTTPS CONNECT/443,
+  resolves DNS again for every request, connects to the resolved IP, and rejects the complete answer
+  set if any IPv4/IPv6 address is private, loopback, link-local, multicast, reserved, or documentation-only.
+- Proxy request, byte, and time quotas are enforced; hop-by-hop and proxy-authorization headers are stripped.
+- Redirects are not followed by the proxy, so every redirected destination returns through the same checks.
+- `OPEN_WEB` remains forbidden and restricted execution fails closed if the proxy cannot start.
