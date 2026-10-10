@@ -55,13 +55,16 @@ integration("PostgreSQL coordinator store", () => {
       status: "ONLINE",
     });
 
+    const workloadDigest = `sha256:${randomBytes(32).toString("hex")}` as const;
     const job = await store.createPolicyCheckedJob(
       {
         requesterId: requester.id,
         workload: {
+          id: randomUUID(),
           name: `ci-workload-${randomUUID()}`,
           version: "1.0.0",
-          imageDigest: `sha256:${randomBytes(32).toString("hex")}`,
+          imageDigest: workloadDigest,
+          imageReference: `ghcr.io/powermesh/ci-workload@${workloadDigest}`,
         },
         resources: {
           cpu: 1,

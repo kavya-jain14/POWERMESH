@@ -2,8 +2,14 @@ import type { FastifyInstance } from "fastify";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "./app";
 import { createOfferSigner, verifyOfferSignature } from "./offers/signing";
+import { createTestWorkloadCatalog, imageTransformWorkloadId } from "./workloads/catalog";
 
 const enrollmentKey = "enrollment-test-key";
+const workloadCatalog = createTestWorkloadCatalog();
+
+function buildTestApp(options: Parameters<typeof buildApp>[0] = {}) {
+  return buildApp({ workloadCatalog, ...options });
+}
 
 async function enrollRequester(app: FastifyInstance) {
   const response = await app.inject({
@@ -18,7 +24,7 @@ async function enrollRequester(app: FastifyInstance) {
 
 describe("coordinator API", () => {
   it("reports health", async () => {
-    const app = buildApp();
+    const app = buildTestApp();
     const response = await app.inject({ method: "GET", url: "/health" });
 
     expect(response.statusCode).toBe(200);
@@ -32,7 +38,7 @@ describe("coordinator API", () => {
   });
 
   it("blocks a workload asking for the Docker socket", async () => {
-    const app = buildApp();
+    const app = buildTestApp();
     const response = await app.inject({
       method: "POST",
       url: "/v1/risk/classify",
@@ -55,24 +61,15 @@ describe("coordinator API", () => {
   });
 
   it("submits a bounded job after policy classification", async () => {
-    const app = buildApp({ enrollmentKey });
+    const app = buildTestApp({ enrollmentKey });
     const { requesterToken } = await enrollRequester(app);
     const response = await app.inject({
       method: "POST",
       url: "/v1/jobs",
       headers: { authorization: `Bearer ${requesterToken}` },
       payload: {
-        workload: {
-          name: "image-resize",
-          version: "1.0.0",
-          imageDigest: `sha256:${"a".repeat(64)}`,
-        },
-        resources: {
-          cpu: 1,
-          memoryMb: 256,
-          timeoutSeconds: 60,
-          networkMode: "OFFLINE",
-        },
+        workloadId: imageTransformWorkloadId,
+        params: { format: "webp", maxWidth: 1600, quality: 82 },
       },
     });
 
@@ -82,8 +79,8 @@ describe("coordinator API", () => {
     await app.close();
   });
 
-  it("keeps open-web jobs outside the MVP", async () => {
-    const app = buildApp({ enrollmentKey });
+  it("does not let a requester supply an arbitrary image or network policy", async () => {
+    const app = buildTestApp({ enrollmentKey });
     const { requesterToken } = await enrollRequester(app);
     const response = await app.inject({
       method: "POST",
@@ -104,13 +101,32 @@ describe("coordinator API", () => {
       },
     });
 
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe("INVALID_JOB");
+    await app.close();
+  });
+
+  it("does not accept unverified input digests before artifact transport exists", async () => {
+    const app = buildTestApp({ enrollmentKey });
+    const { requesterToken } = await enrollRequester(app);
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/jobs",
+      headers: { authorization: `Bearer ${requesterToken}` },
+      payload: {
+        workloadId: imageTransformWorkloadId,
+        params: { format: "png", maxWidth: 1024, quality: 80 },
+        inputDigests: [`sha256:${"c".repeat(64)}`],
+      },
+    });
+
     expect(response.statusCode).toBe(422);
-    expect(response.json().risk.tier).toBe("HIGH");
+    expect(response.json().error).toBe("ARTIFACT_TRANSPORT_UNAVAILABLE");
     await app.close();
   });
 
   it("registers a provider and accepts its heartbeat", async () => {
-    const app = buildApp({ enrollmentKey });
+    const app = buildTestApp({ enrollmentKey });
     const registration = await app.inject({
       method: "POST",
       url: "/v1/nodes/register",
@@ -151,10 +167,11 @@ describe("coordinator API", () => {
 
   it("signs, approves, and claims an offer exactly once", async () => {
     const signer = createOfferSigner();
-    const app = buildApp({
+    const app = buildTestApp({
       offerSigner: signer,
       coordinatorKey: "coordinator-test-key",
       enrollmentKey,
+      autoMatch: false,
     });
     const { requesterToken } = await enrollRequester(app);
     const registration = await app.inject({
@@ -191,17 +208,8 @@ describe("coordinator API", () => {
       url: "/v1/jobs",
       headers: { authorization: `Bearer ${requesterToken}` },
       payload: {
-        workload: {
-          name: "thumbnail-render",
-          version: "1.0.0",
-          imageDigest: `sha256:${"c".repeat(64)}`,
-        },
-        resources: {
-          cpu: 2,
-          memoryMb: 1024,
-          timeoutSeconds: 120,
-          networkMode: "OFFLINE",
-        },
+        workloadId: imageTransformWorkloadId,
+        params: { format: "webp", maxWidth: 1600, quality: 82 },
       },
     });
     const jobId = submission.json().job.id;
@@ -264,8 +272,148 @@ describe("coordinator API", () => {
     await app.close();
   });
 
+  it("automatically matches a queued job and accepts authenticated execution results", async () => {
+    const app = buildTestApp({ enrollmentKey });
+    const { requesterToken } = await enrollRequester(app);
+    const registration = await app.inject({
+      method: "POST",
+      url: "/v1/nodes/register",
+      headers: { "x-powermesh-enrollment-key": enrollmentKey },
+      payload: {
+        ownerId: "55555555-5555-4555-8555-555555555555",
+        nodeName: "automatic-provider",
+        os: "linux",
+        architecture: "x64",
+        agentVersion: "0.1.0",
+        cpuCores: 4,
+        memoryMb: 4096,
+        networkModes: ["OFFLINE"],
+        isolationLevels: ["CONTAINER_BASELINE"],
+      },
+    });
+    const { node, agentToken } = registration.json();
+    await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/heartbeat`,
+      headers: { authorization: `Bearer ${agentToken}` },
+      payload: {
+        availableCpu: 4,
+        availableMemoryMb: 4096,
+        activeJobs: 0,
+        status: "ONLINE",
+      },
+    });
+    const submission = await app.inject({
+      method: "POST",
+      url: "/v1/jobs",
+      headers: { authorization: `Bearer ${requesterToken}` },
+      payload: {
+        workloadId: imageTransformWorkloadId,
+        params: { format: "webp", maxWidth: 1600, quality: 82 },
+      },
+    });
+    const jobId = submission.json().job.id;
+    expect(submission.json().job.state).toBe("OFFERED");
+
+    const poll = await app.inject({
+      method: "GET",
+      url: `/v1/nodes/${node.id}/offers`,
+      headers: { authorization: `Bearer ${agentToken}` },
+    });
+    const offer = poll.json().offers[0];
+    await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/offers/${offer.id}/approve`,
+      headers: { authorization: `Bearer ${agentToken}` },
+    });
+    await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/offers/${offer.id}/claim`,
+      headers: { authorization: `Bearer ${agentToken}` },
+      payload: { nonce: offer.manifest.nonce, leaseSeconds: 60 },
+    });
+    const started = await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/jobs/${jobId}/start`,
+      headers: { authorization: `Bearer ${agentToken}` },
+    });
+    expect(started.json().job.state).toBe("RUNNING");
+
+    const digest = `sha256:${"f".repeat(64)}`;
+    const completed = await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/jobs/${jobId}/complete`,
+      headers: { authorization: `Bearer ${agentToken}` },
+      payload: {
+        exitCode: 0,
+        timedOut: false,
+        outputTruncated: false,
+        outputValidated: true,
+        stdout: { sizeBytes: 10, digest },
+        stderr: { sizeBytes: 0, digest },
+      },
+    });
+    expect(completed.statusCode).toBe(200);
+    expect(completed.json().job.state).toBe("SUCCEEDED");
+    await app.close();
+  });
+
+  it("reserves provider capacity while an earlier offer is pending", async () => {
+    const app = buildTestApp({ enrollmentKey });
+    const { requesterToken } = await enrollRequester(app);
+    const registration = await app.inject({
+      method: "POST",
+      url: "/v1/nodes/register",
+      headers: { "x-powermesh-enrollment-key": enrollmentKey },
+      payload: {
+        ownerId: "66666666-6666-4666-8666-666666666666",
+        nodeName: "single-slot-provider",
+        os: "linux",
+        architecture: "x64",
+        agentVersion: "0.1.0",
+        cpuCores: 1,
+        memoryMb: 512,
+        networkModes: ["OFFLINE"],
+        isolationLevels: ["CONTAINER_BASELINE"],
+      },
+    });
+    const { node, agentToken } = registration.json();
+    await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/heartbeat`,
+      headers: { authorization: `Bearer ${agentToken}` },
+      payload: {
+        availableCpu: 1,
+        availableMemoryMb: 512,
+        activeJobs: 0,
+        status: "ONLINE",
+      },
+    });
+    const submit = () =>
+      app.inject({
+        method: "POST",
+        url: "/v1/jobs",
+        headers: { authorization: `Bearer ${requesterToken}` },
+        payload: {
+          workloadId: imageTransformWorkloadId,
+          params: { format: "png", maxWidth: 1024, quality: 80 },
+        },
+      });
+
+    const first = await submit();
+    const second = await submit();
+
+    expect(first.json().job.state).toBe("OFFERED");
+    expect(second.json().job.state).toBe("POLICY_CHECKED");
+    await app.close();
+  });
+
   it("rejects an offer when the provider lacks the requested capability", async () => {
-    const app = buildApp({ coordinatorKey: "coordinator-test-key", enrollmentKey });
+    const app = buildTestApp({
+      coordinatorKey: "coordinator-test-key",
+      enrollmentKey,
+      autoMatch: false,
+    });
     const { requesterToken } = await enrollRequester(app);
     const registration = await app.inject({
       method: "POST",
@@ -289,7 +437,7 @@ describe("coordinator API", () => {
       url: `/v1/nodes/${node.id}/heartbeat`,
       headers: { authorization: `Bearer ${agentToken}` },
       payload: {
-        availableCpu: 1,
+        availableCpu: 0,
         availableMemoryMb: 512,
         activeJobs: 0,
         status: "ONLINE",
@@ -300,17 +448,8 @@ describe("coordinator API", () => {
       url: "/v1/jobs",
       headers: { authorization: `Bearer ${requesterToken}` },
       payload: {
-        workload: {
-          name: "large-render",
-          version: "1.0.0",
-          imageDigest: `sha256:${"d".repeat(64)}`,
-        },
-        resources: {
-          cpu: 2,
-          memoryMb: 2048,
-          timeoutSeconds: 120,
-          networkMode: "OFFLINE",
-        },
+        workloadId: imageTransformWorkloadId,
+        params: { format: "png", maxWidth: 1024, quality: 80 },
       },
     });
     const response = await app.inject({
@@ -326,7 +465,7 @@ describe("coordinator API", () => {
   });
 
   it("rejects unauthenticated job access and provider enrollment", async () => {
-    const app = buildApp({ enrollmentKey });
+    const app = buildTestApp({ enrollmentKey });
     const job = await app.inject({ method: "POST", url: "/v1/jobs", payload: {} });
     const provider = await app.inject({
       method: "POST",
@@ -350,7 +489,7 @@ describe("coordinator API", () => {
   });
 
   it("prevents one requester from reading another requester's job", async () => {
-    const app = buildApp({ enrollmentKey });
+    const app = buildTestApp({ enrollmentKey });
     const owner = await enrollRequester(app);
     const stranger = await enrollRequester(app);
     const submission = await app.inject({
@@ -358,17 +497,8 @@ describe("coordinator API", () => {
       url: "/v1/jobs",
       headers: { authorization: `Bearer ${owner.requesterToken}` },
       payload: {
-        workload: {
-          name: "private-job",
-          version: "1.0.0",
-          imageDigest: `sha256:${"e".repeat(64)}`,
-        },
-        resources: {
-          cpu: 1,
-          memoryMb: 256,
-          timeoutSeconds: 60,
-          networkMode: "OFFLINE",
-        },
+        workloadId: imageTransformWorkloadId,
+        params: { format: "jpeg", maxWidth: 1280, quality: 85 },
       },
     });
     const jobId = submission.json().job.id;
@@ -390,7 +520,7 @@ describe("coordinator API", () => {
   });
 
   it("rate limits repeated requests", async () => {
-    const app = buildApp({ rateLimitMax: 2 });
+    const app = buildTestApp({ rateLimitMax: 2 });
     await app.inject({ method: "GET", url: "/health" });
     await app.inject({ method: "GET", url: "/health" });
     const limited = await app.inject({ method: "GET", url: "/health" });
