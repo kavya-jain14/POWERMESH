@@ -25,6 +25,7 @@ interface JobRow {
   requested_cpu: number;
   requested_memory_mb: number;
   timeout_seconds: number;
+  max_output_bytes: number;
   network_mode: JobRecord["resources"]["networkMode"];
   allowed_hosts: string[];
   risk_tier: JobRecord["riskTier"];
@@ -102,6 +103,7 @@ function mapJob(row: JobRow): JobRecord {
       cpu: row.requested_cpu,
       memoryMb: row.requested_memory_mb,
       timeoutSeconds: row.timeout_seconds,
+      maxOutputBytes: row.max_output_bytes,
       networkMode: row.network_mode,
       allowedHosts: row.allowed_hosts,
       needsHostMount: false,
@@ -258,8 +260,9 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
       await client.query(
         `INSERT INTO jobs (
           id, requester_id, workload_id, params, input_digests, requested_cpu,
-          requested_memory_mb, timeout_seconds, network_mode, allowed_hosts, risk_tier, state
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'POLICY_CHECKED')`,
+          requested_memory_mb, timeout_seconds, max_output_bytes, network_mode, allowed_hosts,
+          risk_tier, state
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'POLICY_CHECKED')`,
         [
           jobId,
           input.requesterId,
@@ -269,6 +272,7 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
           input.resources.cpu,
           input.resources.memoryMb,
           input.resources.timeoutSeconds,
+          input.resources.maxOutputBytes,
           input.resources.networkMode,
           JSON.stringify(input.resources.allowedHosts),
           risk.tier,

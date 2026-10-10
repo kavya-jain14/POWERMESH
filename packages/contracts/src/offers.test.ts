@@ -15,6 +15,7 @@ const manifest: OfferManifest = {
     cpu: 1,
     memoryMb: 256,
     timeoutSeconds: 60,
+    maxOutputBytes: 10 * 1024 * 1024,
     networkMode: "OFFLINE",
     allowedHosts: [],
     needsHostMount: false,
