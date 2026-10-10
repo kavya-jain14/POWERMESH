@@ -1,7 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { assertJobTransition } from "@powermesh/contracts";
+import {
+  assertJobTransition,
+  offerManifestSchema,
+  type SignedJobOffer,
+} from "@powermesh/contracts";
 import type { Pool, PoolClient } from "pg";
-import type { CoordinatorStore, JobRecord, ProviderNodeRecord } from "./types";
+import {
+  type CoordinatorStore,
+  type JobRecord,
+  type ProviderNodeRecord,
+  providerCanRunJob,
+  type StoreResult,
+} from "./types";
 
 interface JobRow {
   id: string;
@@ -40,6 +50,26 @@ interface NodeRow {
   last_heartbeat_at: Date | null;
   created_at: Date;
   updated_at: Date;
+}
+
+interface OfferRow {
+  id: string;
+  job_id: string;
+  node_id: string;
+  nonce: string;
+  manifest_signature: string;
+  expires_at: Date;
+  lease_until: Date | null;
+  manifest: unknown;
+  signature_algorithm: "Ed25519";
+  key_id: string;
+  approved_at: Date | null;
+  claimed_at: Date | null;
+  nonce_consumed_at: Date | null;
+}
+
+interface LockedOfferRow extends OfferRow {
+  job_state: JobRecord["state"];
 }
 
 const jobSelect = `
@@ -102,10 +132,54 @@ function mapNode(row: NodeRow): ProviderNodeRecord {
   };
 }
 
+function mapOffer(row: OfferRow): SignedJobOffer {
+  return {
+    id: row.id,
+    manifest: offerManifestSchema.parse(row.manifest),
+    signature: row.manifest_signature,
+    signatureAlgorithm: row.signature_algorithm,
+    keyId: row.key_id,
+    approvedAt: row.approved_at?.toISOString() ?? null,
+    claimedAt: row.claimed_at?.toISOString() ?? null,
+    leaseUntil: row.lease_until?.toISOString() ?? null,
+  };
+}
+
 async function rollback(client: PoolClient): Promise<void> {
   try {
     await client.query("ROLLBACK");
   } catch {}
+}
+
+async function recordTransition(
+  client: PoolClient,
+  jobId: string,
+  currentState: JobRecord["state"],
+  nextState: JobRecord["state"],
+  actor: string,
+  eventType: string,
+  safePayload: Record<string, unknown> = {},
+): Promise<void> {
+  assertJobTransition(currentState, nextState);
+  await client.query("UPDATE jobs SET state = $2, updated_at = NOW() WHERE id = $1", [
+    jobId,
+    nextState,
+  ]);
+  await client.query(
+    `INSERT INTO job_events
+      (id, job_id, actor, event_type, from_state, to_state, correlation_id, safe_payload)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      randomUUID(),
+      jobId,
+      actor,
+      eventType,
+      currentState,
+      nextState,
+      randomUUID(),
+      JSON.stringify(safePayload),
+    ],
+  );
 }
 
 export class PostgresCoordinatorStore implements CoordinatorStore {
@@ -147,13 +221,13 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
           jobId,
           input.requesterId,
           resolvedWorkloadId,
-          input.params,
-          input.inputDigests,
+          JSON.stringify(input.params),
+          JSON.stringify(input.inputDigests),
           input.resources.cpu,
           input.resources.memoryMb,
           input.resources.timeoutSeconds,
           input.resources.networkMode,
-          input.resources.allowedHosts,
+          JSON.stringify(input.resources.allowedHosts),
           risk.tier,
         ],
       );
@@ -168,7 +242,7 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
           randomUUID(),
           randomUUID(),
           jobId,
-          { riskTier: risk.tier, reasons: risk.reasons },
+          JSON.stringify({ riskTier: risk.tier, reasons: risk.reasons }),
           correlationId,
         ],
       );
@@ -218,7 +292,15 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
         `INSERT INTO job_events
           (id, job_id, actor, event_type, from_state, to_state, correlation_id, safe_payload)
          VALUES ($1, $2, $3, 'STATE_TRANSITION', $4, $5, $6, $7)`,
-        [randomUUID(), id, actor, currentState, nextState, correlationId, safePayload],
+        [
+          randomUUID(),
+          id,
+          actor,
+          currentState,
+          nextState,
+          correlationId,
+          JSON.stringify(safePayload),
+        ],
       );
       await client.query("COMMIT");
       return await this.findJob(id);
@@ -232,12 +314,14 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
 
   async registerProvider(
     input: Parameters<CoordinatorStore["registerProvider"]>[0],
-  ): Promise<ProviderNodeRecord> {
+    newTokenHash: string,
+    currentTokenHash?: string,
+  ): Promise<ProviderNodeRecord | null> {
     const result = await this.pool.query<NodeRow>(
       `INSERT INTO provider_nodes (
         id, owner_id, node_name, os, architecture, agent_version, cpu_cores,
-        memory_mb, network_modes, isolation_levels
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        memory_mb, network_modes, isolation_levels, agent_token_hash
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       ON CONFLICT (owner_id, node_name) DO UPDATE SET
         os = EXCLUDED.os,
         architecture = EXCLUDED.architecture,
@@ -246,7 +330,10 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
         memory_mb = EXCLUDED.memory_mb,
         network_modes = EXCLUDED.network_modes,
         isolation_levels = EXCLUDED.isolation_levels,
+        agent_token_hash = EXCLUDED.agent_token_hash,
         updated_at = NOW()
+      WHERE provider_nodes.agent_token_hash IS NULL
+        OR provider_nodes.agent_token_hash = $12
       RETURNING *`,
       [
         randomUUID(),
@@ -257,13 +344,29 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
         input.agentVersion,
         input.cpuCores,
         input.memoryMb,
-        input.networkModes,
-        input.isolationLevels,
+        JSON.stringify(input.networkModes),
+        JSON.stringify(input.isolationLevels),
+        newTokenHash,
+        currentTokenHash ?? null,
       ],
     );
     const row = result.rows[0];
-    if (!row) throw new Error("Provider registration returned no row");
-    return mapNode(row);
+    return row ? mapNode(row) : null;
+  }
+
+  async authenticateProvider(id: string, tokenHash: string): Promise<boolean> {
+    const result = await this.pool.query(
+      "SELECT 1 FROM provider_nodes WHERE id = $1 AND agent_token_hash = $2",
+      [id, tokenHash],
+    );
+    return result.rowCount === 1;
+  }
+
+  async findProvider(id: string): Promise<ProviderNodeRecord | null> {
+    const result = await this.pool.query<NodeRow>("SELECT * FROM provider_nodes WHERE id = $1", [
+      id,
+    ]);
+    return result.rows[0] ? mapNode(result.rows[0]) : null;
   }
 
   async heartbeatProvider(
@@ -289,5 +392,239 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
       ],
     );
     return result.rows[0] ? mapNode(result.rows[0]) : null;
+  }
+
+  async createOffer(offer: SignedJobOffer): Promise<StoreResult<SignedJobOffer>> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const jobResult = await client.query<JobRow>(
+        `${jobSelect} WHERE jobs.id = $1 FOR UPDATE OF jobs`,
+        [offer.manifest.jobId],
+      );
+      const jobRow = jobResult.rows[0];
+      if (!jobRow) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "JOB_NOT_FOUND" };
+      }
+      const nodeResult = await client.query<NodeRow>(
+        "SELECT * FROM provider_nodes WHERE id = $1 FOR UPDATE",
+        [offer.manifest.nodeId],
+      );
+      const nodeRow = nodeResult.rows[0];
+      if (!nodeRow) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "NODE_NOT_FOUND" };
+      }
+
+      const job = mapJob(jobRow);
+      if (job.state !== "POLICY_CHECKED") {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "INVALID_STATE" };
+      }
+      const eligibilityFailure = providerCanRunJob(mapNode(nodeRow), job);
+      if (eligibilityFailure) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: eligibilityFailure };
+      }
+
+      await client.query(
+        `INSERT INTO assignments (
+          id, job_id, node_id, nonce, manifest_signature, expires_at, manifest,
+          signature_algorithm, key_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          offer.id,
+          offer.manifest.jobId,
+          offer.manifest.nodeId,
+          offer.manifest.nonce,
+          offer.signature,
+          offer.manifest.expiresAt,
+          JSON.stringify(offer.manifest),
+          offer.signatureAlgorithm,
+          offer.keyId,
+        ],
+      );
+      await recordTransition(client, job.id, job.state, "OFFERED", "COORDINATOR", "OFFER_CREATED", {
+        offerId: offer.id,
+        nodeId: offer.manifest.nodeId,
+        expiresAt: offer.manifest.expiresAt,
+        keyId: offer.keyId,
+      });
+      await client.query("COMMIT");
+      return { ok: true, value: offer };
+    } catch (error) {
+      await rollback(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async listPendingOffers(nodeId: string, now: string): Promise<SignedJobOffer[]> {
+    const result = await this.pool.query<OfferRow>(
+      `SELECT assignments.*
+       FROM assignments
+       JOIN jobs ON jobs.id = assignments.job_id
+       WHERE assignments.node_id = $1
+         AND assignments.expires_at > $2
+         AND jobs.state IN ('OFFERED', 'APPROVED')
+       ORDER BY assignments.expires_at`,
+      [nodeId, now],
+    );
+    return result.rows.map(mapOffer);
+  }
+
+  async approveOffer(
+    offerId: string,
+    nodeId: string,
+    now: string,
+  ): Promise<StoreResult<SignedJobOffer>> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<LockedOfferRow>(
+        `SELECT assignments.*, jobs.state AS job_state
+         FROM assignments
+         JOIN jobs ON jobs.id = assignments.job_id
+         WHERE assignments.id = $1
+         FOR UPDATE OF assignments, jobs`,
+        [offerId],
+      );
+      const row = result.rows[0];
+      if (!row) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "OFFER_NOT_FOUND" };
+      }
+      if (row.node_id !== nodeId) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "NODE_MISMATCH" };
+      }
+      if (row.expires_at.getTime() <= Date.parse(now)) {
+        if (row.job_state === "OFFERED") {
+          await recordTransition(
+            client,
+            row.job_id,
+            row.job_state,
+            "EXPIRED",
+            "COORDINATOR",
+            "OFFER_EXPIRED",
+            { offerId },
+          );
+        }
+        await client.query("COMMIT");
+        return { ok: false, reason: "OFFER_EXPIRED" };
+      }
+      if (row.job_state !== "OFFERED") {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "INVALID_STATE" };
+      }
+
+      await client.query("UPDATE assignments SET approved_at = $2 WHERE id = $1", [offerId, now]);
+      await recordTransition(
+        client,
+        row.job_id,
+        row.job_state,
+        "APPROVED",
+        "PROVIDER",
+        "OFFER_APPROVED",
+        { offerId, nodeId },
+      );
+      await client.query("COMMIT");
+      return { ok: true, value: mapOffer({ ...row, approved_at: new Date(now) }) };
+    } catch (error) {
+      await rollback(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async claimOffer(
+    offerId: string,
+    nodeId: string,
+    nonce: string,
+    now: string,
+    leaseUntil: string,
+  ): Promise<StoreResult<SignedJobOffer>> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<LockedOfferRow>(
+        `SELECT assignments.*, jobs.state AS job_state
+         FROM assignments
+         JOIN jobs ON jobs.id = assignments.job_id
+         WHERE assignments.id = $1
+         FOR UPDATE OF assignments, jobs`,
+        [offerId],
+      );
+      const row = result.rows[0];
+      if (!row) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "OFFER_NOT_FOUND" };
+      }
+      if (row.node_id !== nodeId) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "NODE_MISMATCH" };
+      }
+      if (row.nonce_consumed_at) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "NONCE_ALREADY_USED" };
+      }
+      if (row.nonce !== nonce) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "NONCE_MISMATCH" };
+      }
+      if (row.expires_at.getTime() <= Date.parse(now)) {
+        if (row.job_state === "APPROVED") {
+          await recordTransition(
+            client,
+            row.job_id,
+            row.job_state,
+            "EXPIRED",
+            "COORDINATOR",
+            "OFFER_EXPIRED",
+            { offerId },
+          );
+        }
+        await client.query("COMMIT");
+        return { ok: false, reason: "OFFER_EXPIRED" };
+      }
+      if (row.job_state !== "APPROVED") {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "INVALID_STATE" };
+      }
+
+      await client.query(
+        `UPDATE assignments
+         SET claimed_at = $2, nonce_consumed_at = $2, lease_until = $3
+         WHERE id = $1 AND nonce_consumed_at IS NULL`,
+        [offerId, now, leaseUntil],
+      );
+      await recordTransition(
+        client,
+        row.job_id,
+        row.job_state,
+        "CLAIMED",
+        "PROVIDER_AGENT",
+        "OFFER_CLAIMED",
+        { offerId, nodeId, leaseUntil },
+      );
+      await client.query("COMMIT");
+      return {
+        ok: true,
+        value: mapOffer({
+          ...row,
+          claimed_at: new Date(now),
+          nonce_consumed_at: new Date(now),
+          lease_until: new Date(leaseUntil),
+        }),
+      };
+    } catch (error) {
+      await rollback(client);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }

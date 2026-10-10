@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildApp } from "./app";
+import { createOfferSigner, verifyOfferSignature } from "./offers/signing";
 
 describe("coordinator API", () => {
   it("reports health", async () => {
@@ -7,11 +8,12 @@ describe("coordinator API", () => {
     const response = await app.inject({ method: "GET", url: "/health" });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
+    expect(response.json()).toMatchObject({
       status: "ok",
       service: "powermesh-api",
       storage: "memory",
     });
+    expect(response.json().offerSigningKeyId).toHaveLength(24);
     await app.close();
   });
 
@@ -111,9 +113,11 @@ describe("coordinator API", () => {
 
     expect(registration.statusCode).toBe(201);
     const nodeId = registration.json().node.id;
+    const agentToken = registration.json().agentToken;
     const heartbeat = await app.inject({
       method: "POST",
       url: `/v1/nodes/${nodeId}/heartbeat`,
+      headers: { authorization: `Bearer ${agentToken}` },
       payload: {
         availableCpu: 8,
         availableMemoryMb: 12000,
@@ -125,6 +129,170 @@ describe("coordinator API", () => {
     expect(heartbeat.statusCode).toBe(200);
     expect(heartbeat.json().node.status).toBe("ONLINE");
     expect(heartbeat.json().node.lastHeartbeatAt).toBeTruthy();
+    await app.close();
+  });
+
+  it("signs, approves, and claims an offer exactly once", async () => {
+    const signer = createOfferSigner();
+    const app = buildApp({ offerSigner: signer, coordinatorKey: "coordinator-test-key" });
+    const registration = await app.inject({
+      method: "POST",
+      url: "/v1/nodes/register",
+      payload: {
+        ownerId: "22222222-2222-4222-8222-222222222222",
+        nodeName: "secure-provider",
+        os: "linux",
+        architecture: "x64",
+        agentVersion: "0.1.0",
+        cpuCores: 8,
+        memoryMb: 8192,
+        networkModes: ["OFFLINE", "RESTRICTED"],
+        isolationLevels: ["GVISOR"],
+      },
+    });
+    const { node, agentToken } = registration.json();
+    await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/heartbeat`,
+      headers: { authorization: `Bearer ${agentToken}` },
+      payload: {
+        availableCpu: 6,
+        availableMemoryMb: 6144,
+        activeJobs: 0,
+        status: "ONLINE",
+      },
+    });
+
+    const submission = await app.inject({
+      method: "POST",
+      url: "/v1/jobs",
+      payload: {
+        requesterId: "11111111-1111-4111-8111-111111111111",
+        workload: {
+          name: "thumbnail-render",
+          version: "1.0.0",
+          imageDigest: `sha256:${"c".repeat(64)}`,
+        },
+        resources: {
+          cpu: 2,
+          memoryMb: 1024,
+          timeoutSeconds: 120,
+          networkMode: "OFFLINE",
+        },
+      },
+    });
+    const jobId = submission.json().job.id;
+    const creation = await app.inject({
+      method: "POST",
+      url: `/v1/jobs/${jobId}/offers`,
+      headers: { "x-powermesh-coordinator-key": "coordinator-test-key" },
+      payload: { nodeId: node.id, ttlSeconds: 120 },
+    });
+
+    expect(creation.statusCode).toBe(201);
+    const offer = creation.json().offer;
+    expect(verifyOfferSignature(offer, signer.publicKeyPem)).toBe(true);
+
+    const unauthenticatedPoll = await app.inject({
+      method: "GET",
+      url: `/v1/nodes/${node.id}/offers`,
+    });
+    expect(unauthenticatedPoll.statusCode).toBe(401);
+
+    const poll = await app.inject({
+      method: "GET",
+      url: `/v1/nodes/${node.id}/offers`,
+      headers: { authorization: `Bearer ${agentToken}` },
+    });
+    expect(poll.json().offers).toHaveLength(1);
+
+    const approval = await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/offers/${offer.id}/approve`,
+      headers: { authorization: `Bearer ${agentToken}` },
+    });
+    expect(approval.statusCode).toBe(200);
+    expect(approval.json().offer.approvedAt).toBeTruthy();
+
+    const claim = await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/offers/${offer.id}/claim`,
+      headers: { authorization: `Bearer ${agentToken}` },
+      payload: { nonce: offer.manifest.nonce, leaseSeconds: 60 },
+    });
+    expect(claim.statusCode).toBe(200);
+    expect(claim.json().offer.leaseUntil).toBeTruthy();
+
+    const replay = await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/offers/${offer.id}/claim`,
+      headers: { authorization: `Bearer ${agentToken}` },
+      payload: { nonce: offer.manifest.nonce, leaseSeconds: 60 },
+    });
+    expect(replay.statusCode).toBe(409);
+    expect(replay.json().error).toBe("NONCE_ALREADY_USED");
+
+    const job = await app.inject({ method: "GET", url: `/v1/jobs/${jobId}` });
+    expect(job.json().state).toBe("CLAIMED");
+    await app.close();
+  });
+
+  it("rejects an offer when the provider lacks the requested capability", async () => {
+    const app = buildApp({ coordinatorKey: "coordinator-test-key" });
+    const registration = await app.inject({
+      method: "POST",
+      url: "/v1/nodes/register",
+      payload: {
+        ownerId: "22222222-2222-4222-8222-222222222222",
+        nodeName: "offline-only",
+        os: "linux",
+        architecture: "x64",
+        agentVersion: "0.1.0",
+        cpuCores: 2,
+        memoryMb: 1024,
+        networkModes: ["OFFLINE"],
+        isolationLevels: ["CONTAINER_BASELINE"],
+      },
+    });
+    const { node, agentToken } = registration.json();
+    await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/heartbeat`,
+      headers: { authorization: `Bearer ${agentToken}` },
+      payload: {
+        availableCpu: 1,
+        availableMemoryMb: 512,
+        activeJobs: 0,
+        status: "ONLINE",
+      },
+    });
+    const submission = await app.inject({
+      method: "POST",
+      url: "/v1/jobs",
+      payload: {
+        requesterId: "11111111-1111-4111-8111-111111111111",
+        workload: {
+          name: "large-render",
+          version: "1.0.0",
+          imageDigest: `sha256:${"d".repeat(64)}`,
+        },
+        resources: {
+          cpu: 2,
+          memoryMb: 2048,
+          timeoutSeconds: 120,
+          networkMode: "OFFLINE",
+        },
+      },
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: `/v1/jobs/${submission.json().job.id}/offers`,
+      headers: { "x-powermesh-coordinator-key": "coordinator-test-key" },
+      payload: { nodeId: node.id },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toBe("NODE_UNAVAILABLE");
     await app.close();
   });
 });

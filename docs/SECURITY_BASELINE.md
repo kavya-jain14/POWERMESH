@@ -11,6 +11,7 @@ Docker is a useful packaging boundary, not an impenetrable security boundary. Po
 - `OFFLINE` networking by default
 - Exact-host egress proxy for `RESTRICTED` mode; redirects, private IP ranges, DNS rebinding, and quotas enforced
 - Signed workload manifest, pinned image digest, nonce, and expiry
+- Agent bearer tokens stored as one-way hashes and required for heartbeat, polling, approval, and claim
 - Provider approval showing image identity, inputs, limits, network mode, and risk reasons
 - Local kill switch that works without coordinator connectivity
 - Output type, size, archive depth, digest, and active-content validation
@@ -36,3 +37,5 @@ gVisor adds a userspace-kernel boundary between the workload and host kernel. It
 - Kill switch depends on the coordinator
 - A blocked job reaches the matcher
 - Raw active output is rendered in the browser
+- An offer can be claimed twice, after expiry, or by a different provider node
+- A production coordinator starts with an ephemeral signing key

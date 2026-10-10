@@ -38,3 +38,11 @@ state, and append an event in one transaction. A database trigger rejects update
 ## Cross-platform rule
 
 Jobs target capabilities, not operating systems. A node may advertise container baseline, gVisor, or microVM isolation only after a runtime probe succeeds. Unsupported jobs are never offered to that node.
+
+## Offer trust boundary
+
+The Agent opens the connection and polls; the coordinator never opens an inbound connection to a
+provider machine. Every offer carries a canonical manifest signed with Ed25519, a pinned image
+digest, a 256-bit nonce, and a short expiry. Provider approval and Agent claim are separate state
+transitions. Claim atomically consumes the nonce and creates a bounded lease, so a captured request
+cannot be replayed to start the job again.
