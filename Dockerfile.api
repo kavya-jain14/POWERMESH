@@ -6,14 +6,14 @@ ENV API_PORT=4000
 
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install --global pnpm@12.10.1
 
 COPY --chown=node:node package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY --chown=node:node apps/api ./apps/api
 COPY --chown=node:node packages/contracts ./packages/contracts
 
-RUN corepack pnpm install --frozen-lockfile --filter @powermesh/api... \
-  && corepack pnpm store prune
+RUN pnpm install --frozen-lockfile --filter @powermesh/api... \
+  && pnpm store prune
 
 USER node
 
