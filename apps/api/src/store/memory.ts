@@ -6,6 +6,7 @@ import {
   type JobRecord,
   type ProviderNodeRecord,
   providerCanRunJob,
+  type RequesterRecord,
   type StoreResult,
 } from "./types";
 
@@ -24,8 +25,31 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
   private readonly jobs = new Map<string, JobRecord>();
   private readonly nodes = new Map<string, StoredNode>();
   private readonly offers = new Map<string, StoredOffer>();
+  private readonly requesters = new Map<string, { record: RequesterRecord; tokenHash: string }>();
 
   async close(): Promise<void> {}
+
+  async registerRequester(
+    input: Parameters<CoordinatorStore["registerRequester"]>[0],
+    tokenHash: string,
+  ): Promise<RequesterRecord> {
+    const now = new Date().toISOString();
+    const record: RequesterRecord = {
+      id: randomUUID(),
+      communityId: input.communityId ?? null,
+      status: "ACTIVE",
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.requesters.set(record.id, { record, tokenHash });
+    return structuredClone(record);
+  }
+
+  async authenticateRequester(tokenHash: string): Promise<RequesterRecord | null> {
+    const requester = [...this.requesters.values()].find((entry) => entry.tokenHash === tokenHash);
+    if (requester?.record.status !== "ACTIVE") return null;
+    return structuredClone(requester.record);
+  }
 
   async createPolicyCheckedJob(
     input: Parameters<CoordinatorStore["createPolicyCheckedJob"]>[0],
@@ -77,7 +101,8 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
     const existing = [...this.nodes.values()].find(
       ({ record }) => record.ownerId === input.ownerId && record.nodeName === input.nodeName,
     );
-    if (existing && existing.tokenHash !== currentTokenHash) return null;
+    if (currentTokenHash && (!existing || existing.tokenHash !== currentTokenHash)) return null;
+    if (!currentTokenHash && existing) return null;
 
     const now = new Date().toISOString();
     const node: ProviderNodeRecord = {

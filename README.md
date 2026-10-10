@@ -63,8 +63,9 @@ Initial API routes:
 
 Provider registration returns an Agent bearer token once. Keep it in the Agent's OS credential
 store; only its SHA-256 digest is persisted. Re-registration rotates the token and requires the
-current token. Production also requires a stable base64-encoded Ed25519 private key and a separate
-coordinator API key.
+current token. Production also requires a stable base64-encoded Ed25519 private key and separate
+coordinator and enrollment keys. Requester identity is derived from its issued bearer credential;
+clients cannot submit or read a job as another requester.
 
 ## Quality checks
 

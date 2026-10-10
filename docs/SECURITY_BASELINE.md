@@ -39,3 +39,20 @@ gVisor adds a userspace-kernel boundary between the workload and host kernel. It
 - Raw active output is rendered in the browser
 - An offer can be claimed twice, after expiry, or by a different provider node
 - A production coordinator starts with an ephemeral signing key
+
+## Identity and enrollment
+
+- Requester IDs are derived from bearer credentials; clients cannot choose another requester ID.
+- Reading a job requires its requester credential or the separate coordinator credential.
+- First-time requester and provider enrollment requires a deployment enrollment key.
+- Provider credential rotation requires the current Agent token.
+- Enrollment endpoints have stricter rate limits and the API has a global abuse limit.
+- Agent tokens and pinned coordinator keys use Keychain on macOS, DPAPI on Windows, and Secret
+  Service on Linux. A changed signing key fails closed until the provider explicitly re-enrolls.
+
+## Automated security gates
+
+Pull requests run CodeQL extended queries, Gitleaks, a production dependency audit, Trivy filesystem
+and configuration analysis, and a Trivy scan of the non-root API image. Third-party actions are
+pinned to reviewed commit SHAs; this is especially important because scanner actions themselves are
+part of the software supply chain.

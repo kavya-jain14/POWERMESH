@@ -10,6 +10,7 @@ import {
   type JobRecord,
   type ProviderNodeRecord,
   providerCanRunJob,
+  type RequesterRecord,
   type StoreResult,
 } from "./types";
 
@@ -70,6 +71,14 @@ interface OfferRow {
 
 interface LockedOfferRow extends OfferRow {
   job_state: JobRecord["state"];
+}
+
+interface RequesterRow {
+  id: string;
+  community_id: string | null;
+  status: "ACTIVE" | "SUSPENDED";
+  created_at: Date;
+  updated_at: Date;
 }
 
 const jobSelect = `
@@ -145,6 +154,16 @@ function mapOffer(row: OfferRow): SignedJobOffer {
   };
 }
 
+function mapRequester(row: RequesterRow): RequesterRecord {
+  return {
+    id: row.id,
+    communityId: row.community_id,
+    status: row.status,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
+
 async function rollback(client: PoolClient): Promise<void> {
   try {
     await client.query("ROLLBACK");
@@ -189,6 +208,30 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
 
   async close(): Promise<void> {
     await this.pool.end();
+  }
+
+  async registerRequester(
+    input: Parameters<CoordinatorStore["registerRequester"]>[0],
+    tokenHash: string,
+  ): Promise<RequesterRecord> {
+    const result = await this.pool.query<RequesterRow>(
+      `INSERT INTO users (id, role, community_id, credential_token_hash)
+       VALUES ($1, 'REQUESTER', $2, $3)
+       RETURNING *`,
+      [randomUUID(), input.communityId ?? null, tokenHash],
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error("Requester registration returned no row");
+    return mapRequester(row);
+  }
+
+  async authenticateRequester(tokenHash: string): Promise<RequesterRecord | null> {
+    const result = await this.pool.query<RequesterRow>(
+      `SELECT * FROM users
+       WHERE credential_token_hash = $1 AND role = 'REQUESTER' AND status = 'ACTIVE'`,
+      [tokenHash],
+    );
+    return result.rows[0] ? mapRequester(result.rows[0]) : null;
   }
 
   async createPolicyCheckedJob(
@@ -317,6 +360,27 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
     newTokenHash: string,
     currentTokenHash?: string,
   ): Promise<ProviderNodeRecord | null> {
+    if (currentTokenHash) {
+      const existing = await this.pool.query(
+        `SELECT 1 FROM provider_nodes
+         WHERE owner_id = $1 AND node_name = $2 AND agent_token_hash = $3`,
+        [input.ownerId, input.nodeName, currentTokenHash],
+      );
+      if (existing.rowCount !== 1) return null;
+    } else {
+      await this.pool.query(
+        `INSERT INTO users (id, role)
+         VALUES ($1, 'PROVIDER')
+         ON CONFLICT (id) DO NOTHING`,
+        [input.ownerId],
+      );
+      const owner = await this.pool.query(
+        "SELECT 1 FROM users WHERE id = $1 AND role = 'PROVIDER'",
+        [input.ownerId],
+      );
+      if (owner.rowCount !== 1) return null;
+    }
+
     const result = await this.pool.query<NodeRow>(
       `INSERT INTO provider_nodes (
         id, owner_id, node_name, os, architecture, agent_version, cpu_cores,

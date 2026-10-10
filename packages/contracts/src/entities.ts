@@ -23,6 +23,12 @@ export const jobSubmissionSchema = z.object({
   inputDigests: z.array(imageDigestSchema).max(20).default([]),
 });
 
+export const jobCreationSchema = jobSubmissionSchema.omit({ requesterId: true });
+
+export const requesterRegistrationSchema = z.object({
+  communityId: z.string().trim().min(2).max(80).optional(),
+});
+
 export const providerRegistrationSchema = z.object({
   ownerId: z.string().uuid(),
   nodeName: z.string().trim().min(1).max(80),
@@ -43,5 +49,7 @@ export const providerHeartbeatSchema = z.object({
 });
 
 export type JobSubmission = z.infer<typeof jobSubmissionSchema>;
+export type JobCreation = z.infer<typeof jobCreationSchema>;
 export type ProviderHeartbeat = z.infer<typeof providerHeartbeatSchema>;
 export type ProviderRegistration = z.infer<typeof providerRegistrationSchema>;
+export type RequesterRegistration = z.infer<typeof requesterRegistrationSchema>;
