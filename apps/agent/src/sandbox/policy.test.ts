@@ -10,7 +10,13 @@ const offer: SignedJobOffer = {
     offerId: "11111111-1111-4111-8111-111111111111",
     jobId: "22222222-2222-4222-8222-222222222222",
     nodeId: "33333333-3333-4333-8333-333333333333",
-    workload: { name: "worker", version: "1", imageDigest: `sha256:${"a".repeat(64)}` },
+    workload: {
+      id: "44444444-4444-4444-8444-444444444444",
+      name: "worker",
+      version: "1",
+      imageDigest: `sha256:${"a".repeat(64)}`,
+      imageReference: `ghcr.io/powermesh/worker@sha256:${"a".repeat(64)}`,
+    },
     resources: {
       cpu: 1,
       memoryMb: 256,
@@ -49,7 +55,7 @@ const rootless: RuntimeCapability = {
 describe("sandbox policy", () => {
   it("maps a verified low-risk offer into fixed sandbox limits", () => {
     const job = sandboxJobFromVerifiedOffer(offer, rootless);
-    expect(job.image).toBe(offer.manifest.workload.imageDigest);
+    expect(job.image).toBe(offer.manifest.workload.imageReference);
     expect(job.limits).toMatchObject({ cpu: 1, memoryMb: 256, pids: 128, maxOutputBytes: 1024 });
   });
 
