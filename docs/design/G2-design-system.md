@@ -1,35 +1,49 @@
 # G2 — Design tokens & core components
 
-Owner: Gargi · Status: **v0 (2026-10-10)** · Code: `packages/ui`
+Owner: Gargi · Status: **v1 — theme "2077" (2026-10-10)** · Code: `packages/ui`
 
 **Done when** (master plan): typography, colors, spacing, tables, buttons, badges and dialogs are reusable.
 
 ## Direction
 
-Restrained compute console (master plan §6): warm paper, ink-black type, electric-lime action accent, compact
-tables, lightweight node visuals. No glassmorphism, gradient heroes, card-grid sprawl or decorative AI imagery.
+**Theme: "2077"** from the tweakcn community (playful tag, by Evan Jacobs), dark variant: black canvas, white
+type, coral-red `#d6544b` action accent, square corners, Chakra Petch + IBM Plex Mono. It replaces the v0
+paper/ink/lime direction from master plan §6 (Gargi's call under §8 decision rights). Still a restrained compute
+console: compact tables, lightweight node visuals, no glassmorphism, gradient heroes or decorative AI imagery.
+
+Where we deliberately depart from the raw theme (safety > fidelity):
+
+- **Danger is its own crimson** (`--pm-danger-fill` `#ea1330`, white text). In 2077, destructive = primary; here
+  "Stop job" must never look like "Approve once".
+- **LOW risk and "healthy" are green**, not the accent. A red-family "safe" signal would mislead.
+- Status colours come from the theme's chart palette (orange `#e68933`, yellow `#d4ce21`, blue `#2f75e4`
+  lightened to `#6ea4f5` for AA) plus a green the theme lacks.
+- Panels are lifted to `#0a0a0a` and hairlines to `#262626` (theme: `#000` / `#222`) so structure survives on black.
+- Only the dark variant ships. 2077's light variant has white borders on white, so it shows no structure.
 
 ## Tokens — `packages/ui/src/tokens.css`
 
 | Group | Tokens | Rule |
 | --- | --- | --- |
-| Neutrals | `--pm-paper` `#f5f3ee`, `--pm-surface`, `--pm-surface-sunken`, `--pm-ink` `#111`, `--pm-ink-2`, `--pm-ink-3`, `--pm-line` | `ink-3` is the lightest allowed text colour |
-| Accent | `--pm-lime` `#c8ff3c` (+ hover, press, tint) | **Fill only**, always with ink text. Never lime text on paper |
+| Neutrals | `--pm-paper` `#000`, `--pm-surface` `#0a0a0a`, `--pm-surface-sunken` `#1c1c17`, `--pm-ink` `#fff`, `--pm-ink-2`, `--pm-ink-3`, `--pm-line` | `ink-3` is the dimmest allowed text colour; `color-scheme: dark` |
+| Accent | `--pm-accent` `#d6544b` (+ hover, press, tint), `--pm-on-accent` `#000`, `--pm-accent-text` | Text on an accent fill is always `--pm-on-accent`. Accent text on dark wells uses `--pm-accent-text` |
+| Danger fill | `--pm-danger-fill` `#ea1330` (+ hover), `--pm-on-danger` `#fff` | Destructive buttons, stopped milestones, kill-bar border. `--pm-danger` is the text tone |
 | Status | success / info / warning / danger / neutral, each fg + tint | Always paired with a text label + icon |
 | Risk | `--pm-risk-{low,medium,high,blocked}-{fg,bg}` | Risk badge always shown with its reasons |
-| Type | IBM Plex Sans / Plex Mono; 12–32px scale, base 14px | Mono for ids, digests, times |
+| Type | Chakra Petch / IBM Plex Mono; 12–32px scale, base 14px | Mono for ids, digests, times |
 | Space | 4px base, `--pm-space-1…8` | |
-| Shape | radius 4 / 8 / 14; 1px hairline, 2px ink for the one key panel | |
+| Shape | radius 0 everywhere (status dots and timeline markers stay round); 1px hairline, 2px `--pm-line-strong` for key panels | |
 | Motion | 120 / 200ms; zeroed under `prefers-reduced-motion` | |
-| Focus | 2px ink ring + lime halo | Visible on every interactive element |
+| Focus | 2px white ring + coral halo | Visible on every interactive element |
 
-Contrast: `pnpm check:contrast` checks 24 text/background pairings — all pass WCAG AA (lowest 4.99:1).
+Contrast: `pnpm check:contrast` checks 35 text/background pairings — all pass WCAG AA (lowest 4.53:1: white on
+`#ea1330`, the danger button and BLOCKED badge).
 
 ## Components — `@powermesh/ui`
 
 | Component | Use |
 | --- | --- |
-| `Button`, `buttonClassName` | primary (lime) · secondary · ghost · danger; `loading` keeps the label |
+| `Button`, `buttonClassName` | primary (coral, black text) · secondary · ghost · danger (crimson, white text); `loading` keeps the label |
 | `Badge`, `RiskBadge`, `StatusDot` | text-first status; colour reinforces, never replaces |
 | `Banner`, `EmptyState`, `Skeleton`, `Spinner` | degraded / blocked / empty / loading states |
 | `Panel`, `KeyValue` | sections and label/value facts; `strong` and `accent` variants |

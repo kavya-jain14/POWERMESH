@@ -9,7 +9,8 @@
 }
 
 .health[data-status="healthy"] {
-  background: var(--pm-lime-tint);
+  background: var(--pm-success-tint);
+  border-color: var(--pm-success);
 }
 
 .health[data-status="degraded"] {
@@ -118,7 +119,7 @@
 }
 
 .node-busy {
-  fill: var(--pm-lime);
+  fill: var(--pm-accent);
   stroke: var(--pm-ink);
   stroke-width: 2;
 }

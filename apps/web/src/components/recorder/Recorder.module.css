@@ -10,7 +10,7 @@
 }
 
 .statusCard[data-tone="active"] {
-  background: var(--pm-lime-tint);
+  background: var(--pm-accent-tint);
 }
 
 .statusCard[data-tone="success"] {
@@ -93,14 +93,14 @@
 
 .milestoneCurrent .milestoneDot {
   border-color: var(--pm-ink);
-  background: var(--pm-lime);
-  box-shadow: 0 0 0 3px var(--pm-lime-tint);
+  background: var(--pm-accent);
+  box-shadow: 0 0 0 3px var(--pm-accent-tint);
 }
 
 .milestoneStopped .milestoneDot {
-  border-color: var(--pm-danger);
-  background: var(--pm-danger);
-  color: #fff;
+  border-color: var(--pm-danger-fill);
+  background: var(--pm-danger-fill);
+  color: var(--pm-on-danger);
 }
 
 .milestoneDone,
@@ -323,16 +323,17 @@
   width: fit-content;
   height: 36px;
   padding: 0 var(--pm-space-4);
-  border: 1.5px solid var(--pm-ink);
+  border: 1.5px solid var(--pm-accent);
   border-radius: var(--pm-radius-md);
-  background: var(--pm-lime);
-  color: var(--pm-ink);
+  background: var(--pm-accent);
+  color: var(--pm-on-accent);
   font-weight: var(--pm-weight-medium);
   text-decoration: none;
 }
 
 .download:hover {
-  background: var(--pm-lime-hover);
+  background: var(--pm-accent-hover);
+  border-color: var(--pm-accent-hover);
   text-decoration: none;
 }
 

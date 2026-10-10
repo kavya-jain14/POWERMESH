@@ -3,10 +3,10 @@ import type { JobState, RiskExplanation, RiskFact } from "@/contracts-draft/type
 import { STATE_COPY } from "@/lib/copy";
 import styles from "./common.module.css";
 
-export function JobStateBadge({ state }: { state: JobState }) {
+export function JobStateBadge({ state, size }: { state: JobState; size?: "md" | "lg" }) {
   const c = STATE_COPY[state];
   return (
-    <Badge tone={c.tone} icon={c.icon}>
+    <Badge tone={c.tone} icon={c.icon} size={size}>
       {c.badge}
     </Badge>
   );

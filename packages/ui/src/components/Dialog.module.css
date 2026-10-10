@@ -8,7 +8,7 @@
 }
 
 .dialog::backdrop {
-  background: rgb(17 17 17 / 0.45);
+  background: var(--pm-backdrop);
 }
 
 .center {

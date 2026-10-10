@@ -54,16 +54,18 @@
 }
 
 .primary {
-  background: var(--pm-lime);
-  color: var(--pm-ink);
+  background: var(--pm-accent);
+  border-color: var(--pm-accent);
+  color: var(--pm-on-accent);
 }
 
 .primary:hover:not(:disabled) {
-  background: var(--pm-lime-hover);
+  background: var(--pm-accent-hover);
+  border-color: var(--pm-accent-hover);
 }
 
 .primary:active:not(:disabled) {
-  background: var(--pm-lime-press);
+  background: var(--pm-accent-press);
 }
 
 .secondary {
@@ -86,11 +88,12 @@
 }
 
 .danger {
-  background: var(--pm-danger);
-  border-color: var(--pm-danger);
-  color: #fff;
+  background: var(--pm-danger-fill);
+  border-color: var(--pm-danger-fill);
+  color: var(--pm-on-danger);
 }
 
 .danger:hover:not(:disabled) {
-  background: #8c1a0c;
+  background: var(--pm-danger-fill-hover);
+  border-color: var(--pm-danger-fill-hover);
 }

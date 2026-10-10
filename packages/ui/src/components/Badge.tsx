@@ -11,13 +11,14 @@ export interface BadgeProps {
   children: ReactNode;
   className?: string;
   title?: string;
+  size?: "md" | "lg";
 }
 
 /** Text-first status label. Colour reinforces the text; it never replaces it. */
-export function Badge({ tone = "neutral", icon, children, className, title }: BadgeProps) {
+export function Badge({ tone = "neutral", icon, children, className, title, size = "md" }: BadgeProps) {
   return (
-    <span className={cx(styles.badge, styles[tone], className)} title={title}>
-      {icon ? <Icon name={icon} size={12} /> : null}
+    <span className={cx(styles.badge, styles[tone], size === "lg" && styles.lg, className)} title={title}>
+      {icon ? <Icon name={icon} size={size === "lg" ? 14 : 12} /> : null}
       {children}
     </span>
   );

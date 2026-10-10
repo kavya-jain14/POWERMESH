@@ -37,13 +37,13 @@
 
 .fill {
   height: 100%;
-  background: var(--pm-lime);
+  background: var(--pm-accent);
   border-right: 1px solid var(--pm-ink);
   transition: width var(--pm-duration-base) var(--pm-ease);
 }
 
 .success .fill { background: var(--pm-success); }
-.danger .fill { background: var(--pm-danger); }
+.danger .fill { background: var(--pm-danger-fill); }
 .muted .fill { background: var(--pm-ink-3); }
 
 .meter {

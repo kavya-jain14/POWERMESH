@@ -15,9 +15,9 @@
   top: -100px;
   z-index: 100;
   padding: var(--pm-space-2) var(--pm-space-4);
-  background: var(--pm-lime);
-  color: var(--pm-ink);
-  border: var(--pm-border-strong);
+  background: var(--pm-accent);
+  color: var(--pm-on-accent);
+  border: 2px solid var(--pm-accent);
   border-radius: var(--pm-radius-md);
   font-weight: var(--pm-weight-bold);
 }
@@ -136,9 +136,9 @@
 
 .navLinkActive,
 .navLinkActive:hover {
-  background: var(--pm-lime);
-  border-color: var(--pm-ink);
-  color: var(--pm-ink);
+  background: var(--pm-accent);
+  border-color: var(--pm-accent);
+  color: var(--pm-on-accent);
 }
 
 .sidebarFooter {

@@ -104,7 +104,7 @@
 }
 
 .toggle[aria-checked="true"] {
-  background: var(--pm-lime);
+  background: var(--pm-accent);
 }
 
 .toggle:disabled {
@@ -118,7 +118,7 @@
   left: 2px;
   width: 17px;
   height: 17px;
-  border-radius: 50%;
+  border-radius: var(--pm-radius-pill);
   background: var(--pm-ink);
   transition: transform var(--pm-duration-fast) var(--pm-ease);
 }
@@ -173,7 +173,7 @@
 
 .choiceChecked {
   border-color: var(--pm-ink);
-  background: var(--pm-lime-tint);
+  background: var(--pm-accent-tint);
 }
 
 .choiceDisabled {
@@ -191,7 +191,7 @@
 
 .radio {
   margin: 3px 0 0;
-  accent-color: var(--pm-ink);
+  accent-color: var(--pm-accent);
   width: 16px;
   height: 16px;
   flex: none;

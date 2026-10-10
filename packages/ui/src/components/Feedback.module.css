@@ -55,7 +55,7 @@
 .warning .bannerIcon, .warning .bannerTitle { color: var(--pm-warning); }
 .danger { background: var(--pm-danger-tint); border-color: color-mix(in srgb, var(--pm-danger) 30%, transparent); }
 .danger .bannerIcon, .danger .bannerTitle { color: var(--pm-danger); }
-.active { background: var(--pm-lime-tint); border-color: var(--pm-ink); }
+.active { background: var(--pm-accent-tint); border-color: var(--pm-ink); }
 
 /* Empty state */
 .empty {

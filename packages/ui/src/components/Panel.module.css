@@ -10,8 +10,8 @@
 }
 
 .accent {
-  background: var(--pm-lime);
-  border: var(--pm-border-strong);
+  background: var(--pm-accent-tint);
+  border: 2px solid var(--pm-accent);
 }
 
 .sunken {

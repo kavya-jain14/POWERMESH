@@ -67,8 +67,8 @@ button, input, select, textarea {
 }
 
 ::selection {
-  background: var(--pm-lime);
-  color: var(--pm-ink);
+  background: var(--pm-accent);
+  color: var(--pm-on-accent);
 }
 
 .pm-visually-hidden {
