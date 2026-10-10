@@ -37,6 +37,41 @@ function responseHeaders(headers: IncomingHttpHeaders): OutgoingHttpHeaders {
   };
 }
 
+function safeStatusCode(statusCode: number | undefined): number {
+  switch (statusCode) {
+    case 200:
+    case 201:
+    case 202:
+    case 204:
+    case 206:
+    case 301:
+    case 302:
+    case 303:
+    case 304:
+    case 307:
+    case 308:
+    case 400:
+    case 401:
+    case 403:
+    case 404:
+    case 405:
+    case 409:
+    case 410:
+    case 412:
+    case 413:
+    case 415:
+    case 422:
+    case 429:
+    case 500:
+    case 502:
+    case 503:
+    case 504:
+      return statusCode;
+    default:
+      return 502;
+  }
+}
+
 export function createEgressProxy(options: EgressProxyOptions): http.Server {
   const allowedHosts = new Set(options.allowedHosts.map(normalizeHostname));
   const resolver: HostResolver =
@@ -85,7 +120,7 @@ export function createEgressProxy(options: EgressProxyOptions): http.Server {
       upstream.once("close", () => clearTimeout(deadline));
       upstream.on("response", (upstreamResponse) => {
         response.writeHead(
-          upstreamResponse.statusCode ?? 502,
+          safeStatusCode(upstreamResponse.statusCode),
           responseHeaders(upstreamResponse.headers),
         );
         upstreamResponse.on("data", (chunk: Buffer) => {
