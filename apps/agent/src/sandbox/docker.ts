@@ -31,7 +31,8 @@ export function buildDockerArgs(job: SandboxJob, containerName: string): string[
   if (!PINNED_IMAGE.test(job.image))
     throw new Error("Sandbox images must be pinned by SHA-256 digest");
   assertLimits(job);
-  if (job.networkMode !== "OFFLINE") {
+  if (job.networkMode === "OPEN_WEB") throw new Error("Open web execution is forbidden");
+  if (job.networkMode === "RESTRICTED" && !job.restrictedNetwork) {
     throw new Error("Networked jobs require the controlled egress runtime");
   }
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(containerName)) {
@@ -45,7 +46,19 @@ export function buildDockerArgs(job: SandboxJob, containerName: string): string[
     containerName,
     "--label",
     `io.powermesh.job=${job.jobId}`,
-    "--network=none",
+    ...(job.networkMode === "OFFLINE"
+      ? ["--network=none"]
+      : [
+          `--network=${job.restrictedNetwork?.networkName}`,
+          `--ip=${job.restrictedNetwork?.workloadIp}`,
+          "--dns=127.0.0.1",
+          "--env",
+          `HTTP_PROXY=http://${job.restrictedNetwork?.proxyIp}:8080`,
+          "--env",
+          `HTTPS_PROXY=http://${job.restrictedNetwork?.proxyIp}:8080`,
+          "--env",
+          "NO_PROXY=",
+        ]),
     "--read-only",
     "--user=65532:65532",
     "--cap-drop=ALL",

@@ -84,6 +84,10 @@ This runs formatting/lint checks, TypeScript validation, unit tests, and product
 - The provider can stop work locally even if the coordinator is unavailable.
 - Container isolation is never described as impenetrable. The runtime reports the isolation it actually verified.
 
+The provider Agent advertises execution only after detecting Linux rootless Docker. Offline jobs use
+`--network=none`; restricted jobs use a per-job internal network whose only egress path is a
+digest-pinned, quota-limited allowlist proxy. Medium-risk work additionally requires gVisor.
+
 Read [the architecture](docs/ARCHITECTURE.md), [security baseline](docs/SECURITY_BASELINE.md), and [team workflow](docs/TEAM_WORKFLOW.md) before implementing a new execution path.
 
 ## Ownership

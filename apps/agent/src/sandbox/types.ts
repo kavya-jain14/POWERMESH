@@ -17,6 +17,12 @@ export interface SandboxJob {
   command?: string[];
   isolation: SandboxIsolation;
   networkMode: NetworkMode;
+  allowedHosts: string[];
+  restrictedNetwork?: {
+    networkName: string;
+    workloadIp: string;
+    proxyIp: string;
+  };
   limits: SandboxLimits;
 }
 
