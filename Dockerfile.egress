@@ -1,0 +1,28 @@
+FROM node:22.22.0-bookworm-slim AS dependencies
+
+ENV NODE_ENV=production
+WORKDIR /app
+RUN npm install --global pnpm@12.10.1
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY apps/agent ./apps/agent
+COPY packages/contracts ./packages/contracts
+RUN pnpm install --prod --frozen-lockfile --filter @powermesh/agent...
+
+FROM node:22.22.0-bookworm-slim AS runtime
+
+ENV NODE_ENV=production
+WORKDIR /app
+
+RUN apt-get update \
+  && apt-get upgrade --yes \
+  && rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/pnpm /usr/local/bin/pnpx
+
+COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
+COPY --from=dependencies --chown=node:node /app/apps/agent ./apps/agent
+COPY --from=dependencies --chown=node:node /app/packages/contracts ./packages/contracts
+
+USER node
+EXPOSE 8080
+CMD ["node", "--import", "tsx", "apps/agent/src/egress/main.ts"]

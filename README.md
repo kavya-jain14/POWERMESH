@@ -42,10 +42,30 @@ corepack enable
 pnpm install
 pnpm infra:up
 cp .env.example .env
+pnpm db:migrate
 pnpm dev
 ```
 
-The web app runs at `http://localhost:3000` and the API at `http://localhost:4000`.
+The web app runs at `http://localhost:3000` and the API at `http://localhost:4000`. Without
+`DATABASE_URL`, the API intentionally falls back to an in-memory store for contract and UI work.
+
+Initial API routes:
+
+- `POST /v1/jobs` — validate, classify, and submit an eligible declarative job
+- `GET /v1/jobs/:id` — read the normalized job state
+- `POST /v1/nodes/register` — register or refresh a provider capability record
+- `POST /v1/nodes/:id/heartbeat` — publish live capacity without accepting inbound access
+- `POST /v1/risk/classify` — explain the deterministic risk decision
+- `POST /v1/jobs/:id/offers` — create a short-lived Ed25519-signed provider offer
+- `GET /v1/nodes/:id/offers` — let an authenticated Agent poll outbound for pending work
+- `POST /v1/nodes/:nodeId/offers/:offerId/approve` — record explicit provider consent
+- `POST /v1/nodes/:nodeId/offers/:offerId/claim` — consume the nonce and start a short lease
+
+Provider registration returns an Agent bearer token once. Keep it in the Agent's OS credential
+store; only its SHA-256 digest is persisted. Re-registration rotates the token and requires the
+current token. Production also requires a stable base64-encoded Ed25519 private key and separate
+coordinator and enrollment keys. Requester identity is derived from its issued bearer credential;
+clients cannot submit or read a job as another requester.
 
 ## Quality checks
 
@@ -63,6 +83,10 @@ This runs formatting/lint checks, TypeScript validation, unit tests, and product
 - CPU, memory, PID, disk, and wall-clock limits are mandatory.
 - The provider can stop work locally even if the coordinator is unavailable.
 - Container isolation is never described as impenetrable. The runtime reports the isolation it actually verified.
+
+The provider Agent advertises execution only after detecting Linux rootless Docker. Offline jobs use
+`--network=none`; restricted jobs use a per-job internal network whose only egress path is a
+digest-pinned, quota-limited allowlist proxy. Medium-risk work additionally requires gVisor.
 
 Read [the architecture](docs/ARCHITECTURE.md), [security baseline](docs/SECURITY_BASELINE.md), and [team workflow](docs/TEAM_WORKFLOW.md) before implementing a new execution path.
 
