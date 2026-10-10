@@ -1,11 +1,29 @@
 import { randomUUID } from "node:crypto";
+import type { SignedJobOffer } from "@powermesh/contracts";
 import { assertJobTransition } from "@powermesh/contracts";
-import type { CoordinatorStore, JobRecord, ProviderNodeRecord } from "./types";
+import {
+  type CoordinatorStore,
+  type JobRecord,
+  type ProviderNodeRecord,
+  providerCanRunJob,
+  type StoreResult,
+} from "./types";
+
+interface StoredNode {
+  record: ProviderNodeRecord;
+  tokenHash: string;
+}
+
+interface StoredOffer {
+  record: SignedJobOffer;
+  nonceConsumedAt: string | null;
+}
 
 export class MemoryCoordinatorStore implements CoordinatorStore {
   readonly kind = "memory" as const;
   private readonly jobs = new Map<string, JobRecord>();
-  private readonly nodes = new Map<string, ProviderNodeRecord>();
+  private readonly nodes = new Map<string, StoredNode>();
+  private readonly offers = new Map<string, StoredOffer>();
 
   async close(): Promise<void> {}
 
@@ -53,41 +71,139 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
 
   async registerProvider(
     input: Parameters<CoordinatorStore["registerProvider"]>[0],
-  ): Promise<ProviderNodeRecord> {
+    newTokenHash: string,
+    currentTokenHash?: string,
+  ): Promise<ProviderNodeRecord | null> {
     const existing = [...this.nodes.values()].find(
-      (node) => node.ownerId === input.ownerId && node.nodeName === input.nodeName,
+      ({ record }) => record.ownerId === input.ownerId && record.nodeName === input.nodeName,
     );
+    if (existing && existing.tokenHash !== currentTokenHash) return null;
+
     const now = new Date().toISOString();
     const node: ProviderNodeRecord = {
       ...input,
-      id: existing?.id ?? randomUUID(),
-      availableCpu: existing?.availableCpu ?? 0,
-      availableMemoryMb: existing?.availableMemoryMb ?? 0,
-      activeJobs: existing?.activeJobs ?? 0,
-      status: existing?.status ?? "OFFLINE",
-      lastHeartbeatAt: existing?.lastHeartbeatAt ?? null,
-      createdAt: existing?.createdAt ?? now,
+      id: existing?.record.id ?? randomUUID(),
+      availableCpu: existing?.record.availableCpu ?? 0,
+      availableMemoryMb: existing?.record.availableMemoryMb ?? 0,
+      activeJobs: existing?.record.activeJobs ?? 0,
+      status: existing?.record.status ?? "OFFLINE",
+      lastHeartbeatAt: existing?.record.lastHeartbeatAt ?? null,
+      createdAt: existing?.record.createdAt ?? now,
       updatedAt: now,
     };
-    this.nodes.set(node.id, node);
+    this.nodes.set(node.id, { record: node, tokenHash: newTokenHash });
     return structuredClone(node);
+  }
+
+  async authenticateProvider(id: string, tokenHash: string): Promise<boolean> {
+    return this.nodes.get(id)?.tokenHash === tokenHash;
+  }
+
+  async findProvider(id: string): Promise<ProviderNodeRecord | null> {
+    const node = this.nodes.get(id)?.record;
+    return node ? structuredClone(node) : null;
   }
 
   async heartbeatProvider(
     id: string,
     heartbeat: Parameters<CoordinatorStore["heartbeatProvider"]>[1],
   ): Promise<ProviderNodeRecord | null> {
-    const node = this.nodes.get(id);
-    if (!node) return null;
+    const stored = this.nodes.get(id);
+    if (!stored) return null;
 
     const now = new Date().toISOString();
     const updated: ProviderNodeRecord = {
-      ...node,
+      ...stored.record,
       ...heartbeat,
       lastHeartbeatAt: now,
       updatedAt: now,
     };
-    this.nodes.set(id, updated);
+    this.nodes.set(id, { ...stored, record: updated });
     return structuredClone(updated);
+  }
+
+  async createOffer(offer: SignedJobOffer): Promise<StoreResult<SignedJobOffer>> {
+    const job = this.jobs.get(offer.manifest.jobId);
+    if (!job) return { ok: false, reason: "JOB_NOT_FOUND" };
+    const node = this.nodes.get(offer.manifest.nodeId)?.record;
+    if (!node) return { ok: false, reason: "NODE_NOT_FOUND" };
+    if (job.state !== "POLICY_CHECKED") return { ok: false, reason: "INVALID_STATE" };
+    const eligibilityFailure = providerCanRunJob(node, job);
+    if (eligibilityFailure) return { ok: false, reason: eligibilityFailure };
+
+    assertJobTransition(job.state, "OFFERED");
+    this.jobs.set(job.id, { ...job, state: "OFFERED", updatedAt: offer.manifest.issuedAt });
+    this.offers.set(offer.id, { record: structuredClone(offer), nonceConsumedAt: null });
+    return { ok: true, value: structuredClone(offer) };
+  }
+
+  async listPendingOffers(nodeId: string, now: string): Promise<SignedJobOffer[]> {
+    const currentTime = Date.parse(now);
+    return [...this.offers.values()]
+      .filter(({ record }) => {
+        const job = this.jobs.get(record.manifest.jobId);
+        return (
+          record.manifest.nodeId === nodeId &&
+          Date.parse(record.manifest.expiresAt) > currentTime &&
+          (job?.state === "OFFERED" || job?.state === "APPROVED")
+        );
+      })
+      .map(({ record }) => structuredClone(record));
+  }
+
+  async approveOffer(
+    offerId: string,
+    nodeId: string,
+    now: string,
+  ): Promise<StoreResult<SignedJobOffer>> {
+    const stored = this.offers.get(offerId);
+    if (!stored) return { ok: false, reason: "OFFER_NOT_FOUND" };
+    if (stored.record.manifest.nodeId !== nodeId) return { ok: false, reason: "NODE_MISMATCH" };
+    const job = this.jobs.get(stored.record.manifest.jobId);
+    if (!job) return { ok: false, reason: "JOB_NOT_FOUND" };
+    if (Date.parse(stored.record.manifest.expiresAt) <= Date.parse(now)) {
+      if (job.state === "OFFERED") {
+        assertJobTransition(job.state, "EXPIRED");
+        this.jobs.set(job.id, { ...job, state: "EXPIRED", updatedAt: now });
+      }
+      return { ok: false, reason: "OFFER_EXPIRED" };
+    }
+    if (job.state !== "OFFERED") return { ok: false, reason: "INVALID_STATE" };
+
+    assertJobTransition(job.state, "APPROVED");
+    const record = { ...stored.record, approvedAt: now };
+    this.offers.set(offerId, { ...stored, record });
+    this.jobs.set(job.id, { ...job, state: "APPROVED", updatedAt: now });
+    return { ok: true, value: structuredClone(record) };
+  }
+
+  async claimOffer(
+    offerId: string,
+    nodeId: string,
+    nonce: string,
+    now: string,
+    leaseUntil: string,
+  ): Promise<StoreResult<SignedJobOffer>> {
+    const stored = this.offers.get(offerId);
+    if (!stored) return { ok: false, reason: "OFFER_NOT_FOUND" };
+    if (stored.record.manifest.nodeId !== nodeId) return { ok: false, reason: "NODE_MISMATCH" };
+    if (stored.nonceConsumedAt) return { ok: false, reason: "NONCE_ALREADY_USED" };
+    if (stored.record.manifest.nonce !== nonce) return { ok: false, reason: "NONCE_MISMATCH" };
+    const job = this.jobs.get(stored.record.manifest.jobId);
+    if (!job) return { ok: false, reason: "JOB_NOT_FOUND" };
+    if (Date.parse(stored.record.manifest.expiresAt) <= Date.parse(now)) {
+      if (job.state === "APPROVED") {
+        assertJobTransition(job.state, "EXPIRED");
+        this.jobs.set(job.id, { ...job, state: "EXPIRED", updatedAt: now });
+      }
+      return { ok: false, reason: "OFFER_EXPIRED" };
+    }
+    if (job.state !== "APPROVED") return { ok: false, reason: "INVALID_STATE" };
+
+    assertJobTransition(job.state, "CLAIMED");
+    const record = { ...stored.record, claimedAt: now, leaseUntil };
+    this.offers.set(offerId, { record, nonceConsumedAt: now });
+    this.jobs.set(job.id, { ...job, state: "CLAIMED", updatedAt: now });
+    return { ok: true, value: structuredClone(record) };
   }
 }

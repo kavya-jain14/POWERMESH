@@ -56,6 +56,15 @@ Initial API routes:
 - `POST /v1/nodes/register` — register or refresh a provider capability record
 - `POST /v1/nodes/:id/heartbeat` — publish live capacity without accepting inbound access
 - `POST /v1/risk/classify` — explain the deterministic risk decision
+- `POST /v1/jobs/:id/offers` — create a short-lived Ed25519-signed provider offer
+- `GET /v1/nodes/:id/offers` — let an authenticated Agent poll outbound for pending work
+- `POST /v1/nodes/:nodeId/offers/:offerId/approve` — record explicit provider consent
+- `POST /v1/nodes/:nodeId/offers/:offerId/claim` — consume the nonce and start a short lease
+
+Provider registration returns an Agent bearer token once. Keep it in the Agent's OS credential
+store; only its SHA-256 digest is persisted. Re-registration rotates the token and requires the
+current token. Production also requires a stable base64-encoded Ed25519 private key and a separate
+coordinator API key.
 
 ## Quality checks
 
