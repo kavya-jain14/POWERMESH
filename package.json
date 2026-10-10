@@ -1,0 +1,16 @@
+{
+  "name": "powermesh",
+  "private": true,
+  "description": "PowerMesh — share a capability, not a device.",
+  "packageManager": "pnpm@12.4.2",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter @powermesh/web dev",
+    "build:web": "pnpm --filter @powermesh/web build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "check:contrast": "node packages/ui/scripts/check-contrast.mjs"
+  }
+}

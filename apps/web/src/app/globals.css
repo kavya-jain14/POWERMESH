@@ -1,0 +1,46 @@
+@import "@powermesh/ui/tokens.css";
+@import "@powermesh/ui/base.css";
+
+/* App-level layout helpers. Component styles live in CSS modules. */
+.pm-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pm-space-5);
+}
+
+.pm-stack-sm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pm-space-3);
+}
+
+.pm-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pm-space-2);
+}
+
+.pm-grid-2 {
+  display: grid;
+  gap: var(--pm-space-5);
+}
+
+@media (min-width: 1040px) {
+  .pm-grid-2 {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    align-items: start;
+  }
+}
+
+.pm-muted {
+  color: var(--pm-ink-3);
+}
+
+.pm-small {
+  font-size: var(--pm-text-sm);
+}
+
+.pm-mono {
+  font-family: var(--pm-font-mono);
+}

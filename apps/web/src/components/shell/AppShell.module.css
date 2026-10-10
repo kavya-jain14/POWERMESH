@@ -1,0 +1,207 @@
+.shell {
+  min-height: 100dvh;
+}
+
+@media (min-width: 960px) {
+  .shell {
+    display: grid;
+    grid-template-columns: var(--pm-sidebar-width) minmax(0, 1fr);
+  }
+}
+
+.skip {
+  position: absolute;
+  left: var(--pm-space-3);
+  top: -100px;
+  z-index: 100;
+  padding: var(--pm-space-2) var(--pm-space-4);
+  background: var(--pm-lime);
+  color: var(--pm-ink);
+  border: var(--pm-border-strong);
+  border-radius: var(--pm-radius-md);
+  font-weight: var(--pm-weight-bold);
+}
+
+.skip:focus {
+  top: var(--pm-space-3);
+}
+
+/* Top bar — narrow screens only */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--pm-z-nav);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--pm-topbar-height);
+  padding: 0 var(--pm-gutter);
+  background: var(--pm-paper);
+  border-bottom: var(--pm-border);
+}
+
+@media (min-width: 960px) {
+  .topbar {
+    display: none;
+  }
+}
+
+.brand {
+  display: inline-flex;
+  color: var(--pm-ink);
+  text-decoration: none;
+}
+
+.menuButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pm-space-2);
+  height: 36px;
+  padding: 0 var(--pm-space-3);
+  border: 1.5px solid var(--pm-ink);
+  border-radius: var(--pm-radius-md);
+  background: var(--pm-surface);
+  font-weight: var(--pm-weight-medium);
+  cursor: pointer;
+}
+
+.drawer {
+  position: sticky;
+  top: var(--pm-topbar-height);
+  z-index: var(--pm-z-nav);
+  padding: var(--pm-space-3) var(--pm-gutter) var(--pm-space-5);
+  background: var(--pm-paper);
+  border-bottom: var(--pm-border-strong);
+  max-height: calc(100dvh - var(--pm-topbar-height));
+  overflow-y: auto;
+}
+
+@media (min-width: 960px) {
+  .drawer {
+    display: none !important;
+  }
+}
+
+/* Sidebar — wide screens */
+.sidebar {
+  display: none;
+}
+
+@media (min-width: 960px) {
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pm-space-4);
+    padding: var(--pm-space-5) var(--pm-space-4);
+    border-right: var(--pm-border);
+    background: var(--pm-paper);
+    overflow-y: auto;
+  }
+}
+
+.tagline {
+  font-size: var(--pm-text-xs);
+  color: var(--pm-ink-3);
+  margin-top: calc(var(--pm-space-2) * -1);
+}
+
+.navList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+}
+
+.navLink {
+  display: flex;
+  align-items: center;
+  gap: var(--pm-space-3);
+  min-height: 40px;
+  padding: 0 var(--pm-space-3);
+  border-radius: var(--pm-radius-md);
+  border: 1.5px solid transparent;
+  color: var(--pm-ink-2);
+  font-weight: var(--pm-weight-medium);
+  text-decoration: none;
+}
+
+.navLink:hover {
+  background: var(--pm-surface-sunken);
+  color: var(--pm-ink);
+  text-decoration: none;
+}
+
+.navLinkActive,
+.navLinkActive:hover {
+  background: var(--pm-lime);
+  border-color: var(--pm-ink);
+  color: var(--pm-ink);
+}
+
+.sidebarFooter {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pm-space-3);
+  padding-top: var(--pm-space-4);
+  border-top: var(--pm-border);
+}
+
+.drawer .sidebarFooter {
+  margin-top: var(--pm-space-4);
+}
+
+.roleSwitch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pm-space-1);
+}
+
+.roleLabel {
+  font-size: var(--pm-text-xs);
+  font-weight: var(--pm-weight-medium);
+  color: var(--pm-ink-3);
+}
+
+.mockTag {
+  display: inline-block;
+  margin-left: var(--pm-space-1);
+  padding: 0 var(--pm-space-1);
+  border: 1px solid var(--pm-ink-3);
+  border-radius: var(--pm-radius-sm);
+  font-size: 10px;
+  letter-spacing: var(--pm-tracking-caps);
+  text-transform: uppercase;
+}
+
+/* Main */
+.main {
+  min-width: 0;
+  outline: none;
+}
+
+.mockStrip {
+  display: flex;
+  align-items: center;
+  gap: var(--pm-space-2);
+  padding: var(--pm-space-1) var(--pm-gutter);
+  background: var(--pm-surface-sunken);
+  color: var(--pm-ink-2);
+  font-size: var(--pm-text-xs);
+  border-bottom: var(--pm-border);
+}
+
+.content {
+  max-width: var(--pm-content-max);
+  margin: 0 auto;
+  padding: var(--pm-space-5) var(--pm-gutter) var(--pm-space-8);
+}
+
+@media (min-width: 960px) {
+  .content {
+    padding-top: var(--pm-space-6);
+  }
+}

@@ -1,0 +1,120 @@
+/*
+ * PowerMesh design tokens — G2.
+ * Visual direction (master plan §6): warm paper background, ink-black typography,
+ * electric-lime action accent, compact data tables. No glassmorphism, no gradient heroes.
+ *
+ * Rules:
+ *  - Lime is a FILL colour only (always with ink text). Never use lime as text on paper.
+ *  - Status and risk are never conveyed by colour alone — pair with a text label + icon.
+ *  - Text tokens are checked for WCAG AA (≥ 4.5:1) against --pm-paper and --pm-surface
+ *    by scripts/check-contrast.mjs.
+ */
+:root {
+  /* ── Neutrals ─────────────────────────────────────────── */
+  --pm-paper: #f5f3ee;          /* page background */
+  --pm-surface: #fbfaf7;        /* panels, tables */
+  --pm-surface-sunken: #ebe8e0; /* wells, code, table header */
+  --pm-ink: #111111;            /* primary text, strong borders */
+  --pm-ink-2: #3b3a36;          /* secondary text */
+  --pm-ink-3: #64625b;          /* muted text, captions (AA on paper) */
+  --pm-line: #d6d2c7;           /* hairline borders */
+  --pm-line-strong: #111111;
+
+  /* ── Accent ───────────────────────────────────────────── */
+  --pm-lime: #c8ff3c;           /* primary action fill */
+  --pm-lime-hover: #b7f01f;
+  --pm-lime-press: #a4dc0c;
+  --pm-lime-tint: #effcc9;
+
+  /* ── Status (text on tint backgrounds) ───────────────── */
+  --pm-success: #17692f;
+  --pm-success-tint: #dcf2e1;
+  --pm-info: #1f4fa8;
+  --pm-info-tint: #e1eaf9;
+  --pm-warning: #8a4f00;
+  --pm-warning-tint: #fbeccc;
+  --pm-danger: #a8200f;
+  --pm-danger-tint: #fbe0dc;
+  --pm-neutral: #4a4944;
+  --pm-neutral-tint: #e6e3da;
+
+  /* ── Risk tiers ───────────────────────────────────────── */
+  --pm-risk-low-fg: #111111;
+  --pm-risk-low-bg: #d9ff7a;
+  --pm-risk-medium-fg: #6e4300;
+  --pm-risk-medium-bg: #ffe39a;
+  --pm-risk-high-fg: #7f2d00;
+  --pm-risk-high-bg: #ffcfa8;
+  --pm-risk-blocked-fg: #ffffff;
+  --pm-risk-blocked-bg: #a8200f;
+
+  /* ── Focus ────────────────────────────────────────────── */
+  --pm-focus-ring: 0 0 0 2px var(--pm-surface), 0 0 0 4px var(--pm-ink), 0 0 0 7px var(--pm-lime);
+
+  /* ── Typography ───────────────────────────────────────── */
+  --pm-font-sans: var(--pm-font-sans-loaded, "IBM Plex Sans"), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --pm-font-mono: var(--pm-font-mono-loaded, "IBM Plex Mono"), ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --pm-text-xs: 0.75rem;    /* 12 — captions, table meta */
+  --pm-text-sm: 0.8125rem;  /* 13 — table cells, badges */
+  --pm-text-md: 0.875rem;   /* 14 — body (compact console) */
+  --pm-text-lg: 1rem;       /* 16 — lead, inputs */
+  --pm-text-xl: 1.25rem;    /* 20 — section titles */
+  --pm-text-2xl: 1.5rem;    /* 24 — page titles */
+  --pm-text-3xl: 2rem;      /* 32 — display numbers */
+
+  --pm-leading-tight: 1.2;
+  --pm-leading-normal: 1.5;
+  --pm-weight-regular: 400;
+  --pm-weight-medium: 500;
+  --pm-weight-bold: 600;
+  --pm-tracking-caps: 0.06em;
+
+  /* ── Spacing (4px base) ───────────────────────────────── */
+  --pm-space-1: 0.25rem;
+  --pm-space-2: 0.5rem;
+  --pm-space-3: 0.75rem;
+  --pm-space-4: 1rem;
+  --pm-space-5: 1.5rem;
+  --pm-space-6: 2rem;
+  --pm-space-7: 3rem;
+  --pm-space-8: 4rem;
+
+  /* ── Shape ────────────────────────────────────────────── */
+  --pm-radius-sm: 4px;
+  --pm-radius-md: 8px;
+  --pm-radius-lg: 14px;
+  --pm-radius-pill: 999px;
+  --pm-border: 1px solid var(--pm-line);
+  --pm-border-strong: 2px solid var(--pm-line-strong);
+  --pm-shadow-sheet: 0 24px 48px -12px rgb(17 17 17 / 0.25);
+
+  /* ── Layout ───────────────────────────────────────────── */
+  --pm-sidebar-width: 232px;
+  --pm-topbar-height: 56px;
+  --pm-content-max: 1200px;
+  --pm-gutter: 16px;
+
+  /* ── Motion ───────────────────────────────────────────── */
+  --pm-duration-fast: 120ms;
+  --pm-duration-base: 200ms;
+  --pm-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ── Layers ───────────────────────────────────────────── */
+  --pm-z-sticky: 10;
+  --pm-z-nav: 20;
+  --pm-z-toast: 40;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --pm-gutter: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --pm-duration-fast: 0ms;
+    --pm-duration-base: 0ms;
+  }
+}

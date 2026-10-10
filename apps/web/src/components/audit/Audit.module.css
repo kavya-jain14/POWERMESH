@@ -1,0 +1,39 @@
+.filters {
+  display: grid;
+  gap: var(--pm-space-3);
+  align-items: end;
+}
+
+@media (min-width: 820px) {
+  .filters {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+  }
+}
+
+.filterActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pm-space-2);
+}
+
+.explain {
+  display: grid;
+  gap: var(--pm-space-5);
+}
+
+@media (min-width: 820px) {
+  .explain {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.outcome {
+  font-size: var(--pm-text-lg);
+  font-weight: var(--pm-weight-medium);
+  margin-bottom: var(--pm-space-2);
+}
+
+.details {
+  min-width: 240px;
+  white-space: normal;
+}

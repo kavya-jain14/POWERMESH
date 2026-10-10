@@ -1,0 +1,36 @@
+.digest {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pm-space-1);
+  max-width: 100%;
+}
+
+.code {
+  font-family: var(--pm-font-mono);
+  font-size: var(--pm-text-sm);
+  padding: 1px var(--pm-space-1);
+  border-radius: var(--pm-radius-sm);
+  background: var(--pm-surface-sunken);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.copy {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border: 1px solid transparent;
+  border-radius: var(--pm-radius-sm);
+  background: transparent;
+  color: var(--pm-ink-2);
+  cursor: pointer;
+}
+
+.copy:hover {
+  border-color: var(--pm-line);
+  background: var(--pm-surface);
+}

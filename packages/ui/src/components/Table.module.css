@@ -1,0 +1,84 @@
+.scroll {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--pm-radius-md);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--pm-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.caption {
+  text-align: left;
+  font-weight: var(--pm-weight-bold);
+  padding-bottom: var(--pm-space-2);
+}
+
+.table th {
+  text-align: left;
+  font-size: var(--pm-text-xs);
+  font-weight: var(--pm-weight-bold);
+  letter-spacing: 0.03em;
+  color: var(--pm-ink-2);
+  background: var(--pm-surface-sunken);
+  white-space: nowrap;
+}
+
+.table th:first-child { border-top-left-radius: var(--pm-radius-sm); }
+.table th:last-child { border-top-right-radius: var(--pm-radius-sm); }
+
+.table td {
+  border-bottom: 1px solid var(--pm-line);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* Opt a cell back into wrapping for prose (descriptions, reasons). */
+.table td.wrap {
+  white-space: normal;
+  min-width: 220px;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover td {
+  background: color-mix(in srgb, var(--pm-surface-sunken) 50%, transparent);
+}
+
+.compact th,
+.compact td {
+  padding: var(--pm-space-2) var(--pm-space-3);
+}
+
+.comfortable th,
+.comfortable td {
+  padding: var(--pm-space-3) var(--pm-space-4);
+}
+
+.mono {
+  font-family: var(--pm-font-mono);
+  font-size: 0.95em;
+}
+
+.muted {
+  color: var(--pm-ink-3);
+}
+
+.numeric {
+  text-align: right;
+}
+
+/* Row link pattern: put a link in the first cell, the whole row stays clickable via the link. */
+.rowLink {
+  font-weight: var(--pm-weight-medium);
+  text-decoration: none;
+}
+
+.rowLink:hover {
+  text-decoration: underline;
+}
