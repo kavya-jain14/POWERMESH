@@ -1,5 +1,5 @@
 import { lookup } from "node:dns/promises";
-import http, { type IncomingHttpHeaders } from "node:http";
+import http, { type IncomingHttpHeaders, type OutgoingHttpHeaders } from "node:http";
 import net from "node:net";
 import { type HostResolver, normalizeHostname, resolvePublicAddress } from "./policy";
 
@@ -11,22 +11,30 @@ export interface EgressProxyOptions {
   resolver?: HostResolver;
 }
 
-const REMOVED_HEADERS = new Set([
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "proxy-connection",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-]);
+function requestHeaders(headers: IncomingHttpHeaders): OutgoingHttpHeaders {
+  return {
+    accept: headers.accept,
+    authorization: headers.authorization,
+    "content-length": headers["content-length"],
+    "content-type": headers["content-type"],
+    "if-modified-since": headers["if-modified-since"],
+    "if-none-match": headers["if-none-match"],
+    "user-agent": headers["user-agent"],
+    "accept-encoding": "identity",
+  };
+}
 
-function safeHeaders(headers: IncomingHttpHeaders): IncomingHttpHeaders {
-  return Object.fromEntries(
-    Object.entries(headers).filter(([name]) => !REMOVED_HEADERS.has(name.toLowerCase())),
-  );
+function responseHeaders(headers: IncomingHttpHeaders): OutgoingHttpHeaders {
+  return {
+    "cache-control": headers["cache-control"],
+    "content-encoding": headers["content-encoding"],
+    "content-length": headers["content-length"],
+    "content-type": headers["content-type"],
+    etag: headers.etag,
+    expires: headers.expires,
+    "last-modified": headers["last-modified"],
+    location: headers.location,
+  };
 }
 
 export function createEgressProxy(options: EgressProxyOptions): http.Server {
@@ -66,7 +74,7 @@ export function createEgressProxy(options: EgressProxyOptions): http.Server {
         port,
         method: request.method,
         path: `${target.pathname}${target.search}`,
-        headers: { ...safeHeaders(request.headers), host: normalizeHostname(target.hostname) },
+        headers: { ...requestHeaders(request.headers), host: normalizeHostname(target.hostname) },
         timeout: options.timeoutMs,
       });
       const deadline = setTimeout(
@@ -78,7 +86,7 @@ export function createEgressProxy(options: EgressProxyOptions): http.Server {
       upstream.on("response", (upstreamResponse) => {
         response.writeHead(
           upstreamResponse.statusCode ?? 502,
-          safeHeaders(upstreamResponse.headers),
+          responseHeaders(upstreamResponse.headers),
         );
         upstreamResponse.on("data", (chunk: Buffer) => {
           try {
