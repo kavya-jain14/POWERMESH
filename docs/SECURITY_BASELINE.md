@@ -67,6 +67,8 @@ part of the software supply chain.
 - CPU, memory, swap, PID, temporary filesystem, wall-clock, and captured-output limits are mandatory.
 - The local kill switch terminates both the client process and the named container.
 - Outputs are size-limited, type checked, magic-byte checked, and hashed before acceptance.
+- Execution completion contains output sizes, hashes, and validation status only; raw bytes and
+  active content never cross the Agent-to-coordinator control-plane endpoint.
 - Restricted jobs run on a per-job internal Docker network with a fixed proxy IP and no usable DNS.
 - Only the digest-pinned proxy sidecar joins both the internal network and a separate uplink network.
 - The proxy uses exact normalized host allowlists, permits only HTTP/80 and HTTPS CONNECT/443,
