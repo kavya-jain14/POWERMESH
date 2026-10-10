@@ -17,10 +17,12 @@ import {
 interface JobRow {
   id: string;
   requester_id: string;
+  workload_id: string;
   workload_name: string;
   workload_version: string;
   image_digest: string;
-  params: Record<string, string>;
+  image_reference: string;
+  params: JobRecord["params"];
   input_digests: string[];
   requested_cpu: number;
   requested_memory_mb: number;
@@ -54,6 +56,12 @@ interface NodeRow {
   updated_at: Date;
 }
 
+interface EffectiveNodeRow extends NodeRow {
+  effective_available_cpu: number;
+  effective_available_memory_mb: number;
+  effective_active_jobs: number;
+}
+
 interface OfferRow {
   id: string;
   job_id: string;
@@ -85,7 +93,8 @@ interface RequesterRow {
 const jobSelect = `
   SELECT jobs.*, workload_definitions.name AS workload_name,
     workload_definitions.version AS workload_version,
-    workload_definitions.image_digest
+    workload_definitions.image_digest,
+    workload_definitions.image_reference
   FROM jobs
   JOIN workload_definitions ON workload_definitions.id = jobs.workload_id
 `;
@@ -95,9 +104,11 @@ function mapJob(row: JobRow): JobRecord {
     id: row.id,
     requesterId: row.requester_id,
     workload: {
+      id: row.workload_id,
       name: row.workload_name,
       version: row.workload_version,
       imageDigest: row.image_digest,
+      imageReference: row.image_reference,
     },
     resources: {
       cpu: row.requested_cpu,
@@ -241,18 +252,27 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
     risk: Parameters<CoordinatorStore["createPolicyCheckedJob"]>[1],
   ): Promise<JobRecord> {
     const client = await this.pool.connect();
-    const workloadId = randomUUID();
+    const workloadId = input.workload.id;
     const jobId = randomUUID();
     const correlationId = randomUUID();
 
     try {
       await client.query("BEGIN");
       const workload = await client.query<{ id: string }>(
-        `INSERT INTO workload_definitions (id, name, version, image_digest)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (image_digest) DO UPDATE SET name = EXCLUDED.name
+        `INSERT INTO workload_definitions (id, name, version, image_digest, image_reference)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (image_digest) DO UPDATE SET
+           name = EXCLUDED.name,
+           version = EXCLUDED.version,
+           image_reference = EXCLUDED.image_reference
          RETURNING id`,
-        [workloadId, input.workload.name, input.workload.version, input.workload.imageDigest],
+        [
+          workloadId,
+          input.workload.name,
+          input.workload.version,
+          input.workload.imageDigest,
+          input.workload.imageReference,
+        ],
       );
       const resolvedWorkloadId = workload.rows[0]?.id;
       if (!resolvedWorkloadId) throw new Error("Workload upsert returned no id");
@@ -308,6 +328,17 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
   async findJob(id: string): Promise<JobRecord | null> {
     const result = await this.pool.query<JobRow>(`${jobSelect} WHERE jobs.id = $1`, [id]);
     return result.rows[0] ? mapJob(result.rows[0]) : null;
+  }
+
+  async listPolicyCheckedJobs(limit: number): Promise<JobRecord[]> {
+    const result = await this.pool.query<JobRow>(
+      `${jobSelect}
+       WHERE jobs.state = 'POLICY_CHECKED'
+       ORDER BY jobs.created_at
+       LIMIT $1`,
+      [limit],
+    );
+    return result.rows.map(mapJob);
   }
 
   async transitionJob(
@@ -437,6 +468,45 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
     return result.rows[0] ? mapNode(result.rows[0]) : null;
   }
 
+  async listAvailableProviders(): Promise<ProviderNodeRecord[]> {
+    const result = await this.pool.query<EffectiveNodeRow>(
+      `SELECT provider_nodes.*,
+         GREATEST(
+           0,
+           provider_nodes.available_cpu - COALESCE(reservations.cpu, 0)
+         ) AS effective_available_cpu,
+         GREATEST(
+           0,
+           provider_nodes.available_memory_mb - COALESCE(reservations.memory_mb, 0)
+         ) AS effective_available_memory_mb,
+         GREATEST(
+           provider_nodes.active_jobs,
+           COALESCE(reservations.jobs, 0)
+         ) AS effective_active_jobs
+       FROM provider_nodes
+       LEFT JOIN (
+         SELECT assignments.node_id,
+           SUM(jobs.requested_cpu)::INTEGER AS cpu,
+           SUM(jobs.requested_memory_mb)::INTEGER AS memory_mb,
+           COUNT(*)::INTEGER AS jobs
+         FROM assignments
+         JOIN jobs ON jobs.id = assignments.job_id
+         WHERE jobs.state IN ('OFFERED', 'APPROVED', 'CLAIMED', 'RUNNING', 'VALIDATING')
+         GROUP BY assignments.node_id
+       ) AS reservations ON reservations.node_id = provider_nodes.id
+       WHERE provider_nodes.status = 'ONLINE'
+       ORDER BY effective_active_jobs, provider_nodes.id`,
+    );
+    return result.rows.map((row) =>
+      mapNode({
+        ...row,
+        available_cpu: row.effective_available_cpu,
+        available_memory_mb: row.effective_available_memory_mb,
+        active_jobs: row.effective_active_jobs,
+      }),
+    );
+  }
+
   async heartbeatProvider(
     id: string,
     heartbeat: Parameters<CoordinatorStore["heartbeatProvider"]>[1],
@@ -485,12 +555,35 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
         return { ok: false, reason: "NODE_NOT_FOUND" };
       }
 
+      const reservationResult = await client.query<{
+        cpu: number;
+        memory_mb: number;
+        jobs: number;
+      }>(
+        `SELECT COALESCE(SUM(jobs.requested_cpu), 0)::INTEGER AS cpu,
+           COALESCE(SUM(jobs.requested_memory_mb), 0)::INTEGER AS memory_mb,
+           COUNT(*)::INTEGER AS jobs
+         FROM assignments
+         JOIN jobs ON jobs.id = assignments.job_id
+         WHERE assignments.node_id = $1
+           AND jobs.state IN ('OFFERED', 'APPROVED', 'CLAIMED', 'RUNNING', 'VALIDATING')`,
+        [offer.manifest.nodeId],
+      );
+      const reservation = reservationResult.rows[0] ?? { cpu: 0, memory_mb: 0, jobs: 0 };
+      const node = mapNode(nodeRow);
+      const effectiveNode: ProviderNodeRecord = {
+        ...node,
+        availableCpu: Math.max(0, node.availableCpu - reservation.cpu),
+        availableMemoryMb: Math.max(0, node.availableMemoryMb - reservation.memory_mb),
+        activeJobs: Math.max(node.activeJobs, reservation.jobs),
+      };
+
       const job = mapJob(jobRow);
       if (job.state !== "POLICY_CHECKED") {
         await client.query("ROLLBACK");
         return { ok: false, reason: "INVALID_STATE" };
       }
-      const eligibilityFailure = providerCanRunJob(mapNode(nodeRow), job);
+      const eligibilityFailure = providerCanRunJob(effectiveNode, job);
       if (eligibilityFailure) {
         await client.query("ROLLBACK");
         return { ok: false, reason: eligibilityFailure };
@@ -688,6 +781,86 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
           lease_until: new Date(leaseUntil),
         }),
       };
+    } catch (error) {
+      await rollback(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async transitionAssignedJob(
+    jobId: string,
+    nodeId: string,
+    nextState: Parameters<CoordinatorStore["transitionAssignedJob"]>[2],
+    actor: string,
+    correlationId: string,
+    safePayload: Record<string, unknown> = {},
+  ): Promise<StoreResult<JobRecord>> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const jobResult = await client.query<{ state: JobRecord["state"] }>(
+        "SELECT state FROM jobs WHERE id = $1 FOR UPDATE",
+        [jobId],
+      );
+      const jobRow = jobResult.rows[0];
+      if (!jobRow) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "JOB_NOT_FOUND" };
+      }
+      const assignmentResult = await client.query<{
+        node_id: string;
+        claimed_at: Date | null;
+        lease_until: Date | null;
+      }>("SELECT node_id, claimed_at, lease_until FROM assignments WHERE job_id = $1 FOR UPDATE", [
+        jobId,
+      ]);
+      const assignmentRow = assignmentResult.rows[0];
+      if (!assignmentRow?.claimed_at) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "JOB_NOT_CLAIMED" };
+      }
+      if (assignmentRow.node_id !== nodeId) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "NODE_MISMATCH" };
+      }
+      if (
+        nextState === "RUNNING" &&
+        (!assignmentRow.lease_until || assignmentRow.lease_until.getTime() <= Date.now())
+      ) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "LEASE_EXPIRED" };
+      }
+      try {
+        assertJobTransition(jobRow.state, nextState);
+      } catch {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "INVALID_STATE" };
+      }
+
+      await client.query("UPDATE jobs SET state = $2, updated_at = NOW() WHERE id = $1", [
+        jobId,
+        nextState,
+      ]);
+      await client.query(
+        `INSERT INTO job_events
+          (id, job_id, actor, event_type, from_state, to_state, correlation_id, safe_payload)
+         VALUES ($1, $2, $3, 'AGENT_STATE_TRANSITION', $4, $5, $6, $7)`,
+        [
+          randomUUID(),
+          jobId,
+          actor,
+          jobRow.state,
+          nextState,
+          correlationId,
+          JSON.stringify(safePayload),
+        ],
+      );
+      await client.query("COMMIT");
+      const updated = await this.findJob(jobId);
+      if (!updated) throw new Error("Transitioned job could not be read");
+      return { ok: true, value: updated };
     } catch (error) {
       await rollback(client);
       throw error;
