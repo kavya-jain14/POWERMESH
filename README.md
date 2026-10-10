@@ -42,10 +42,20 @@ corepack enable
 pnpm install
 pnpm infra:up
 cp .env.example .env
+pnpm db:migrate
 pnpm dev
 ```
 
-The web app runs at `http://localhost:3000` and the API at `http://localhost:4000`.
+The web app runs at `http://localhost:3000` and the API at `http://localhost:4000`. Without
+`DATABASE_URL`, the API intentionally falls back to an in-memory store for contract and UI work.
+
+Initial API routes:
+
+- `POST /v1/jobs` — validate, classify, and submit an eligible declarative job
+- `GET /v1/jobs/:id` — read the normalized job state
+- `POST /v1/nodes/register` — register or refresh a provider capability record
+- `POST /v1/nodes/:id/heartbeat` — publish live capacity without accepting inbound access
+- `POST /v1/risk/classify` — explain the deterministic risk decision
 
 ## Quality checks
 
