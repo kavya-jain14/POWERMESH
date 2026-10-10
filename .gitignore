@@ -3,11 +3,12 @@ node_modules/
 out/
 dist/
 coverage/
-*.tsbuildinfo
-next-env.d.ts
+.turbo/
 .env
 .env.*
 !.env.example
-.turbo/
+*.log
+*.tsbuildinfo
+.DS_Store
 playwright-report/
 test-results/

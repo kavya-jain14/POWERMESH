@@ -1,4 +1,9 @@
+import path from "node:path";
+import { loadEnvConfig } from "@next/env";
 import type { NextConfig } from "next";
+
+// One .env for the whole workspace (repo root), the same file the API and Agent read.
+loadEnvConfig(path.resolve(process.cwd(), "../.."));
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -9,7 +14,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  transpilePackages: ["@powermesh/ui"],
+  transpilePackages: ["@powermesh/ui", "@powermesh/contracts"],
   poweredByHeader: false,
   devIndicators: { position: "bottom-right" },
   async headers() {

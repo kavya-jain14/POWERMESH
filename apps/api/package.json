@@ -1,0 +1,28 @@
+{
+  "name": "@powermesh/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "db:migrate": "node --env-file-if-exists=../../.env --import tsx src/db/migrate.ts",
+    "dev": "node --env-file-if-exists=../../.env --watch --import tsx src/server.ts",
+    "start": "node --env-file-if-exists=../../.env --import tsx src/server.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/rate-limit": "11.2.1",
+    "@powermesh/contracts": "workspace:*",
+    "fastify": "5.12.5",
+    "pg": "8.23.1",
+    "tsx": "4.23.15",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "@types/pg": "8.23.1",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  }
+}

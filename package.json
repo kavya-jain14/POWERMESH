@@ -1,16 +1,31 @@
 {
   "name": "powermesh",
+  "version": "0.1.0",
   "private": true,
   "description": "PowerMesh — share a capability, not a device.",
-  "packageManager": "pnpm@12.4.2",
+  "packageManager": "pnpm@12.10.1",
   "engines": {
-    "node": ">=20.9.0"
+    "node": ">=22"
   },
   "scripts": {
-    "dev:web": "pnpm --filter @powermesh/web dev",
+    "build": "turbo build",
     "build:web": "pnpm --filter @powermesh/web build",
-    "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint",
-    "check:contrast": "node packages/ui/scripts/check-contrast.mjs"
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "check:contrast": "node packages/ui/scripts/check-contrast.mjs",
+    "db:migrate": "pnpm --filter @powermesh/api db:migrate",
+    "dev": "turbo dev --parallel",
+    "dev:api": "pnpm --filter @powermesh/api dev",
+    "dev:web": "pnpm --filter @powermesh/web dev",
+    "format": "biome check --write .",
+    "infra:down": "docker compose down",
+    "infra:up": "docker compose up -d postgres",
+    "lint": "biome check .",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "turbo": "2.11.7",
+    "typescript": "7.0.2"
   }
 }
