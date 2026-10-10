@@ -24,6 +24,12 @@ export const workloadRequestSchema = z.object({
   cpu: z.number().int().positive().max(16),
   memoryMb: z.number().int().positive().max(32768),
   timeoutSeconds: z.number().int().positive().max(3600),
+  maxOutputBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(50 * 1024 * 1024)
+    .default(10 * 1024 * 1024),
   networkMode: networkModeSchema,
   allowedHosts: z.array(z.string().min(1)).max(20).default([]),
   needsHostMount: z.boolean().default(false),

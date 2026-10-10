@@ -56,3 +56,15 @@ Pull requests run CodeQL extended queries, Gitleaks, a production dependency aud
 and configuration analysis, and a Trivy scan of the non-root API image. Third-party actions are
 pinned to reviewed commit SHAs; this is especially important because scanner actions themselves are
 part of the software supply chain.
+
+## Execution sandbox
+
+- Provider execution is advertised only when Docker is available in rootless mode on Linux.
+- gVisor is advertised only when the `runsc` runtime is installed and detected.
+- Workload images must be immutable SHA-256 digest references.
+- Containers run without networking, host mounts, capabilities, privilege escalation, devices, or the Docker socket.
+- The root filesystem is read-only and the container UID/GID is an unprivileged numeric identity.
+- CPU, memory, swap, PID, temporary filesystem, wall-clock, and captured-output limits are mandatory.
+- The local kill switch terminates both the client process and the named container.
+- Outputs are size-limited, type checked, magic-byte checked, and hashed before acceptance.
+- Networked execution fails closed until the controlled egress proxy is enabled.

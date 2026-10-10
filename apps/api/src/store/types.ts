@@ -64,6 +64,9 @@ export function providerCanRunJob(
     return "NODE_UNAVAILABLE";
   }
   if (!node.networkModes.includes(job.resources.networkMode)) return "CAPABILITY_MISMATCH";
+  if (job.riskTier === "MEDIUM" && !node.isolationLevels.includes("GVISOR")) {
+    return "CAPABILITY_MISMATCH";
+  }
   return null;
 }
 
