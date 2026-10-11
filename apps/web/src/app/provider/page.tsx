@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { ProviderConsole } from "@/components/provider/ProviderConsole";
 import { Forbidden } from "@/components/common/Forbidden";
+import { ProviderConsole } from "@/components/provider/ProviderConsole";
 import { getRole } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Provider Console" };

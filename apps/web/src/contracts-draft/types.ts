@@ -220,7 +220,6 @@ export interface WorkloadDefinition {
   runsRequesterCode: boolean;
   needsSecrets: boolean;
   needsDeviceAccess: boolean;
-  accelerator?: Accelerator;
   input: {
     contentTypes: string[];
     maxFiles: number;

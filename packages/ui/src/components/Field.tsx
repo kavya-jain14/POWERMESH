@@ -3,16 +3,16 @@
 import {
   cloneElement,
   forwardRef,
-  isValidElement,
-  useId,
   type InputHTMLAttributes,
+  isValidElement,
   type ReactElement,
   type ReactNode,
   type SelectHTMLAttributes,
+  useId,
 } from "react";
-import { Icon } from "./Icon";
 import { cx } from "../cx";
 import styles from "./Field.module.css";
+import { Icon } from "./Icon";
 
 export interface FieldProps {
   label: ReactNode;
@@ -62,26 +62,24 @@ export function Field({ label, hint, error, required, children, className }: Fie
   );
 }
 
-export const TextInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function TextInput(
-  { className, ...rest },
-  ref,
-) {
-  return <input ref={ref} className={cx(styles.input, className)} {...rest} />;
-});
+export const TextInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  function TextInput({ className, ...rest }, ref) {
+    return <input ref={ref} className={cx(styles.input, className)} {...rest} />;
+  },
+);
 
-export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select(
-  { className, children, ...rest },
-  ref,
-) {
-  return (
-    <span className={styles.selectWrap}>
-      <select ref={ref} className={cx(styles.input, styles.select, className)} {...rest}>
-        {children}
-      </select>
-      <Icon name="chevronDown" className={styles.selectIcon} />
-    </span>
-  );
-});
+export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
+  function Select({ className, children, ...rest }, ref) {
+    return (
+      <span className={styles.selectWrap}>
+        <select ref={ref} className={cx(styles.input, styles.select, className)} {...rest}>
+          {children}
+        </select>
+        <Icon name="chevronDown" className={styles.selectIcon} />
+      </span>
+    );
+  },
+);
 
 export interface ToggleProps {
   checked: boolean;
@@ -142,10 +140,23 @@ export interface ChoiceGroupProps<V extends string> {
 }
 
 /** Radio cards: a fieldset of large, described radio options. */
-export function ChoiceGroup<V extends string>({ legend, name, value, onChange, options, hint, error }: ChoiceGroupProps<V>) {
+export function ChoiceGroup<V extends string>({
+  legend,
+  name,
+  value,
+  onChange,
+  options,
+  hint,
+  error,
+}: ChoiceGroupProps<V>) {
   const id = useId();
   return (
-    <fieldset className={styles.fieldset} aria-describedby={[hint && `${id}-hint`, error && `${id}-err`].filter(Boolean).join(" ") || undefined}>
+    <fieldset
+      className={styles.fieldset}
+      aria-describedby={
+        [hint && `${id}-hint`, error && `${id}-err`].filter(Boolean).join(" ") || undefined
+      }
+    >
       <legend className={styles.label}>{legend}</legend>
       {hint ? (
         <p id={`${id}-hint`} className={styles.hint}>
@@ -156,7 +167,15 @@ export function ChoiceGroup<V extends string>({ legend, name, value, onChange, o
         {options.map((opt) => {
           const optId = `${id}-${opt.value}`;
           return (
-            <label key={opt.value} htmlFor={optId} className={cx(styles.choice, value === opt.value && styles.choiceChecked, opt.disabled && styles.choiceDisabled)}>
+            <label
+              key={opt.value}
+              htmlFor={optId}
+              className={cx(
+                styles.choice,
+                value === opt.value && styles.choiceChecked,
+                opt.disabled && styles.choiceDisabled,
+              )}
+            >
               <input
                 type="radio"
                 id={optId}

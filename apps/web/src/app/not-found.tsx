@@ -1,5 +1,5 @@
+import { buttonClassName, EmptyState } from "@powermesh/ui";
 import Link from "next/link";
-import { EmptyState, buttonClassName } from "@powermesh/ui";
 
 export default function NotFound() {
   return (

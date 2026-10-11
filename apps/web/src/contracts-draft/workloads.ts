@@ -24,7 +24,6 @@ export const IMAGE_TRANSFORM: WorkloadDefinition = {
   runsRequesterCode: false,
   needsSecrets: false,
   needsDeviceAccess: false,
-  accelerator: "none",
   input: {
     contentTypes: ["image/png", "image/jpeg", "image/webp"],
     maxFiles: 12,
@@ -79,58 +78,6 @@ export const IMAGE_TRANSFORM: WorkloadDefinition = {
   availability: { status: "available" },
 };
 
-export const GPU_BENCHMARK: WorkloadDefinition = {
-  id: "gpu-benchmark",
-  name: "NVIDIA GPU benchmark",
-  version: "1.0.0",
-  summary: "Run a fixed CUDA matrix workload and return verified GPU execution proof.",
-  publisher: "PowerMesh",
-  imageDigest: "sha256:9b5fae090d95ca3cb0211ec6aabe60731891c5a5f7f614aa7f1310f0d5495601",
-  signatureVerified: true,
-  runsRequesterCode: false,
-  needsSecrets: false,
-  needsDeviceAccess: false,
-  accelerator: "cuda",
-  input: { contentTypes: [], maxFiles: 0, maxBytesPerFile: 0, maxTotalBytes: 0 },
-  output: { contentTypes: ["application/json"], maxBytesPerFile: 64 * 1024 },
-  paramsSchema: {
-    type: "object",
-    additionalProperties: false,
-    required: ["matrixSize", "iterations"],
-    properties: {
-      matrixSize: {
-        type: "integer",
-        minimum: 256,
-        maximum: 4096,
-        multipleOf: 256,
-        default: 2048,
-        title: "Matrix size",
-        description: "Width and height of each square matrix.",
-      },
-      iterations: {
-        type: "integer",
-        minimum: 1,
-        maximum: 100,
-        default: 20,
-        title: "GPU iterations",
-        description: "Repeated CUDA matrix multiplications for a visible hardware run.",
-      },
-    },
-  },
-  allowedNetworkModes: ["OFFLINE"],
-  minimumIsolation: "docker-rootless",
-  limits: {
-    cpuCores: 2,
-    memoryBytes: 2048 * MB,
-    diskBytes: 512 * MB,
-    timeoutSeconds: 180,
-    pidLimit: 64,
-    maxOutputBytes: 64 * 1024,
-  },
-  idempotent: true,
-  availability: { status: "available" },
-};
-
 export const REPO_METADATA: WorkloadDefinition = {
   id: "repo-metadata",
   name: "Public repository metadata",
@@ -143,7 +90,6 @@ export const REPO_METADATA: WorkloadDefinition = {
   runsRequesterCode: false,
   needsSecrets: false,
   needsDeviceAccess: false,
-  accelerator: "none",
   input: {
     contentTypes: ["text/plain"],
     maxFiles: 1,
@@ -204,7 +150,6 @@ export const CUSTOM_CONTAINER: WorkloadDefinition = {
 
 export const WORKLOADS: readonly WorkloadDefinition[] = [
   IMAGE_TRANSFORM,
-  GPU_BENCHMARK,
   REPO_METADATA,
   CUSTOM_CONTAINER,
 ];

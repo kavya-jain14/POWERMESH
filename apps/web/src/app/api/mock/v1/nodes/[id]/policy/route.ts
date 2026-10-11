@@ -1,6 +1,6 @@
+import type { ProviderPolicy } from "@/contracts-draft/types";
 import { handle, readJson } from "@/mock/http";
 import { getPolicy, putPolicy } from "@/mock/store";
-import type { ProviderPolicy } from "@/contracts-draft/types";
 
 export const dynamic = "force-dynamic";
 

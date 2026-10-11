@@ -1,6 +1,6 @@
+import { WORKLOADS } from "@/contracts-draft/workloads";
 import { handle } from "@/mock/http";
 import { assertCoordinatorUp } from "@/mock/store";
-import { WORKLOADS } from "@/contracts-draft/workloads";
 
 export const dynamic = "force-dynamic";
 

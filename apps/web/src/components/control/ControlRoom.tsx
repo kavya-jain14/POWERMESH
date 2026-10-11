@@ -1,15 +1,32 @@
 "use client";
 
+import {
+  Badge,
+  Banner,
+  Button,
+  EmptyState,
+  Mono,
+  Panel,
+  Skeleton,
+  StatusDot,
+  Table,
+  type Tone,
+  tableStyles,
+} from "@powermesh/ui";
 import Link from "next/link";
-import { Badge, Banner, Button, EmptyState, Mono, Panel, Skeleton, StatusDot, Table, tableStyles, type Tone } from "@powermesh/ui";
-import { isTerminal, type NetworkHealth, type ProviderNode, type Role } from "@/contracts-draft/types";
-import { formatRelative } from "@/contracts-draft/format";
-import { api } from "@/lib/api";
-import { useNow, useResource } from "@/lib/hooks";
-import { describeJob } from "@/lib/copy";
 import { JobStateBadge } from "@/components/common/JobBits";
-import { MeshView } from "./MeshView";
+import { formatRelative } from "@/contracts-draft/format";
+import {
+  isTerminal,
+  type NetworkHealth,
+  type ProviderNode,
+  type Role,
+} from "@/contracts-draft/types";
+import { api } from "@/lib/api";
+import { describeJob } from "@/lib/copy";
+import { useNow, useResource } from "@/lib/hooks";
 import styles from "./Control.module.css";
+import { MeshView } from "./MeshView";
 
 const HEALTH: Record<NetworkHealth["status"], { tone: Tone; label: string }> = {
   healthy: { tone: "success", label: "Healthy" },
@@ -26,13 +43,26 @@ const PROBE_LABEL: Record<ProviderNode["capability"]["isolation"]["probeStatus"]
   unsupported: "Not supported on this device",
 };
 
-const NODE_TONE: Record<ProviderNode["status"], Tone> = { available: "success", busy: "active", paused: "neutral", offline: "danger" };
-const NODE_LABEL: Record<ProviderNode["status"], string> = { available: "Available", busy: "Running a job", paused: "Paused", offline: "Offline" };
+const NODE_TONE: Record<ProviderNode["status"], Tone> = {
+  available: "success",
+  busy: "active",
+  paused: "neutral",
+  offline: "danger",
+};
+const NODE_LABEL: Record<ProviderNode["status"], string> = {
+  available: "Available",
+  busy: "Running a job",
+  paused: "Paused",
+  offline: "Offline",
+};
 
 export function ControlRoom({ role }: { role: Role }) {
   const now = useNow(5000);
   const health = useResource(() => api.network(), { intervalMs: 3000 });
-  const nodes = useResource(() => (role === "requester" ? Promise.resolve([] as ProviderNode[]) : api.listNodes()), { intervalMs: 5000 });
+  const nodes = useResource(
+    () => (role === "requester" ? Promise.resolve([] as ProviderNode[]) : api.listNodes()),
+    { intervalMs: 5000 },
+  );
   const jobs = useResource(() => api.listJobs({ limit: 100 }), { intervalMs: 3000 });
 
   if (health.loading) {
@@ -46,7 +76,8 @@ export function ControlRoom({ role }: { role: Role }) {
     );
   }
 
-  const unreachable = health.error && (health.error.code === "UNAVAILABLE" || health.error.code === "NETWORK");
+  const unreachable =
+    health.error && (health.error.code === "UNAVAILABLE" || health.error.code === "NETWORK");
   const h = health.data;
   const active = (jobs.data?.items ?? []).filter((j) => !isTerminal(j.state));
 
@@ -62,7 +93,8 @@ export function ControlRoom({ role }: { role: Role }) {
             </Button>
           }
         >
-          This is a control-plane problem, not necessarily a provider problem: jobs already running on providers keep running, and providers can still stop them locally.
+          This is a control-plane problem, not necessarily a provider problem: jobs already running
+          on providers keep running, and providers can still stop them locally.
           {h ? ` Figures below are from ${formatRelative(h.checkedAt, now)}.` : null}
         </Banner>
       ) : health.error ? (
@@ -86,7 +118,9 @@ export function ControlRoom({ role }: { role: Role }) {
               Incident: {h.incident.title}. Started {formatRelative(h.incident.startedAt, now)}.
             </p>
           ) : null}
-          {h.coordinator !== "online" ? <p className="pm-small">Coordinator: {h.coordinator}.</p> : null}
+          {h.coordinator !== "online" ? (
+            <p className="pm-small">Coordinator: {h.coordinator}.</p>
+          ) : null}
           <p className="pm-small pm-muted">Checked {formatRelative(h.checkedAt, now)}.</p>
         </section>
       ) : null}
@@ -109,12 +143,22 @@ export function ControlRoom({ role }: { role: Role }) {
       ) : null}
 
       <div className="pm-grid-2">
-        <Panel title={role === "requester" ? "Your active jobs" : role === "provider" ? "Jobs on your device" : "Active jobs"}>
+        <Panel
+          title={
+            role === "requester"
+              ? "Your active jobs"
+              : role === "provider"
+                ? "Jobs on your device"
+                : "Active jobs"
+          }
+        >
           {jobs.loading ? (
             <Skeleton height={80} />
           ) : active.length === 0 ? (
             <EmptyState icon="activity" title="Nothing running right now">
-              {role === "requester" ? "Submit a job and it shows up here while it runs." : "Active work appears here as soon as a provider claims it."}
+              {role === "requester"
+                ? "Submit a job and it shows up here while it runs."
+                : "Active work appears here as soon as a provider claims it."}
             </EmptyState>
           ) : (
             <Table caption="Active jobs">
@@ -136,7 +180,9 @@ export function ControlRoom({ role }: { role: Role }) {
                     <td>
                       <JobStateBadge state={j.state} />
                     </td>
-                    <td className={`pm-small ${tableStyles.wrap}`}>{describeJob(j, role === "provider" ? "provider" : "requester")}</td>
+                    <td className={`pm-small ${tableStyles.wrap}`}>
+                      {describeJob(j, role === "provider" ? "provider" : "requester")}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -145,7 +191,10 @@ export function ControlRoom({ role }: { role: Role }) {
         </Panel>
 
         {role === "requester" ? (
-          <Panel title="Providers" description="Which device runs your job is never shown — only that it met the job's requirements.">
+          <Panel
+            title="Providers"
+            description="Which device runs your job is never shown — only that it met the job's requirements."
+          >
             {h ? (
               <p>
                 {h.nodes.available} of {h.nodes.total} community providers are accepting work.
@@ -153,7 +202,10 @@ export function ControlRoom({ role }: { role: Role }) {
             ) : null}
           </Panel>
         ) : (
-          <Panel title={role === "admin" ? "Provider nodes" : "Your node"} description="Only isolation the Agent has verified counts.">
+          <Panel
+            title={role === "admin" ? "Provider nodes" : "Your node"}
+            description="Only isolation the Agent has verified counts."
+          >
             {nodes.data ? (
               <div className="pm-stack-sm">
                 <MeshView nodes={nodes.data} />
@@ -171,7 +223,10 @@ export function ControlRoom({ role }: { role: Role }) {
                       <tr key={n.id}>
                         <td>
                           {role === "admin" ? (
-                            <Link href={`/audit?nodeId=${encodeURIComponent(n.id)}`} className={tableStyles.rowLink}>
+                            <Link
+                              href={`/audit?nodeId=${encodeURIComponent(n.id)}`}
+                              className={tableStyles.rowLink}
+                            >
                               {n.label}
                             </Link>
                           ) : (
@@ -185,10 +240,13 @@ export function ControlRoom({ role }: { role: Role }) {
                           <StatusDot tone={NODE_TONE[n.status]}>{NODE_LABEL[n.status]}</StatusDot>
                         </td>
                         <td>
-                          {n.capability.isolation.probeStatus === "verified" && n.capability.isolation.verified.length ? (
+                          {n.capability.isolation.probeStatus === "verified" &&
+                          n.capability.isolation.verified.length ? (
                             n.capability.isolation.verified.join(", ")
                           ) : (
-                            <span className="pm-muted">{PROBE_LABEL[n.capability.isolation.probeStatus]}</span>
+                            <span className="pm-muted">
+                              {PROBE_LABEL[n.capability.isolation.probeStatus]}
+                            </span>
                           )}
                         </td>
                         <td className="pm-muted">{formatRelative(n.heartbeatAt, now)}</td>

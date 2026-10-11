@@ -117,14 +117,19 @@ export function ResultPanel({ job, onRefresh }: { job: Job; onRefresh: () => Pro
           Links are short-lived on purpose. Fresh ones are issued when you ask.
         </Banner>
       ) : null}
-      <ul role="list" className={styles.artifacts}>
+      <ul
+        // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none, so the role is restored explicitly.
+        role="list"
+        className={styles.artifacts}
+      >
         {artifacts.map((a) => (
           <li key={a.id} className={styles.artifact}>
             <div className={styles.artifactPreview}>
               {canPreview(a) && !expired ? (
+                // biome-ignore lint/performance/noImgElement: artifact URLs are short-lived signed links; Next's image optimiser would proxy and cache them.
                 <img
                   src={a.url ?? undefined}
-                  alt={`Output image ${a.name}`}
+                  alt={`Transformed output ${a.name}`}
                   loading="lazy"
                   decoding="async"
                   referrerPolicy="no-referrer"
@@ -163,6 +168,7 @@ export function ResultPanel({ job, onRefresh }: { job: Job; onRefresh: () => Pro
                 ]}
               />
               <ul
+                // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none, so the role is restored explicitly.
                 role="list"
                 className={styles.checks}
                 aria-label={`Validation checks for ${a.name}`}

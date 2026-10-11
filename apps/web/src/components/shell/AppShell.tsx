@@ -1,18 +1,22 @@
 "use client";
 
+import { cx, Icon, Select } from "@powermesh/ui";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Icon, Select, cx } from "@powermesh/ui";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { Role } from "@/contracts-draft/types";
-import { IS_LIVE, USES_SIMULATOR, devApi } from "@/lib/api";
+import { devApi, IS_LIVE, USES_SIMULATOR } from "@/lib/api";
 import { ROLE_LABEL } from "@/lib/copy";
-import { NAV, isActive } from "./nav";
-import { Logo } from "./Logo";
-import { DemoControls } from "./DemoControls";
 import styles from "./AppShell.module.css";
+import { DemoControls } from "./DemoControls";
+import { Logo } from "./Logo";
+import { isActive, NAV } from "./nav";
 
-const ROLE_HOME: Record<Role, string> = { requester: "/jobs", provider: "/provider", admin: "/control-room" };
+const ROLE_HOME: Record<Role, string> = {
+  requester: "/jobs",
+  provider: "/provider",
+  admin: "/control-room",
+};
 
 export function AppShell({ role, children }: { role: Role; children: ReactNode }) {
   const pathname = usePathname();
@@ -22,6 +26,7 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
   const menuButton = useRef<HTMLButtonElement>(null);
 
   // Close the narrow-screen menu on navigation.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the trigger — the menu closes whenever the route changes.
   useEffect(() => setMenuOpen(false), [pathname]);
 
   useEffect(() => {
@@ -51,18 +56,20 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
 
   const nav = (
     <nav aria-label="Main">
-      <ul role="list" className={styles.navList}>
-        <li>
-          <Link href="/" className={styles.navLink}>
-            <Icon name="node" />
-            Landing
-          </Link>
-        </li>
+      <ul
+        // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none, so the role is restored explicitly.
+        role="list"
+        className={styles.navList}
+      >
         {NAV[role].map((item) => {
           const active = isActive(item, pathname);
           return (
             <li key={item.href}>
-              <Link href={item.href} className={cx(styles.navLink, active && styles.navLinkActive)} aria-current={active ? "page" : undefined}>
+              <Link
+                href={item.href}
+                className={cx(styles.navLink, active && styles.navLinkActive)}
+                aria-current={active ? "page" : undefined}
+              >
                 <Icon name={item.icon} />
                 {item.label}
               </Link>
@@ -73,22 +80,28 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
     </nav>
   );
 
-  const roleSwitch = (id: string) => USES_SIMULATOR ? (
-    <div className={styles.roleSwitch}>
-      <label htmlFor={id} className={styles.roleLabel}>
-        Viewing as <span className={styles.mockTag}>demo</span>
-      </label>
-      <Select id={id} value={role} disabled={switching} onChange={(e) => void switchRole(e.target.value as Role)}>
-        {(Object.keys(ROLE_LABEL) as Role[]).map((r) => (
-          <option key={r} value={r}>
-            {ROLE_LABEL[r]}
-          </option>
-        ))}
-      </Select>
-    </div>
-  ) : (
-    <p className={styles.roleLabel}>Signed in as {ROLE_LABEL[role]}</p>
-  );
+  const roleSwitch = (id: string) =>
+    USES_SIMULATOR ? (
+      <div className={styles.roleSwitch}>
+        <label htmlFor={id} className={styles.roleLabel}>
+          Viewing as <span className={styles.mockTag}>demo</span>
+        </label>
+        <Select
+          id={id}
+          value={role}
+          disabled={switching}
+          onChange={(e) => void switchRole(e.target.value as Role)}
+        >
+          {(Object.keys(ROLE_LABEL) as Role[]).map((r) => (
+            <option key={r} value={r}>
+              {ROLE_LABEL[r]}
+            </option>
+          ))}
+        </Select>
+      </div>
+    ) : (
+      <p className={styles.roleLabel}>Signed in as {ROLE_LABEL[role]}</p>
+    );
 
   return (
     <div className={styles.shell}>
@@ -118,7 +131,11 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
         </button>
       </header>
 
-      <div id="pm-mobile-nav" className={cx(styles.drawer, menuOpen && styles.drawerOpen)} hidden={!menuOpen}>
+      <div
+        id="pm-mobile-nav"
+        className={cx(styles.drawer, menuOpen && styles.drawerOpen)}
+        hidden={!menuOpen}
+      >
         {nav}
         <div className={styles.sidebarFooter}>
           {roleSwitch("pm-role-drawer")}
@@ -130,12 +147,14 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
         {IS_LIVE ? (
           <p className={styles.mockStrip}>
             <Icon name="info" size={14} />
-            Live coordinator for jobs. Provider, offers, network and audit need endpoints the API doesn't have yet{USES_SIMULATOR ? " — they show offline demo data here" : ""}.
+            Live coordinator for jobs. Provider, offers, network and audit need endpoints the API
+            doesn't have yet{USES_SIMULATOR ? " — they show offline demo data here" : ""}.
           </p>
         ) : USES_SIMULATOR ? (
           <p className={styles.mockStrip}>
             <Icon name="info" size={14} />
-            <strong>Offline demo data</strong> — a simulated coordinator and Agent, for rehearsal. Nothing here runs on a real provider.
+            <strong>Offline demo data</strong> — a simulated coordinator and Agent, for rehearsal.
+            Nothing here runs on a real provider.
           </p>
         ) : null}
         <div className={styles.content}>{children}</div>

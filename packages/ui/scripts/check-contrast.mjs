@@ -2,15 +2,19 @@
 //   node packages/ui/scripts/check-contrast.mjs
 // Parses tokens.css and checks every text/background pairing the components actually use.
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const css = readFileSync(path.join(here, "../src/tokens.css"), "utf8");
-const tokens = Object.fromEntries([...css.matchAll(/--(pm-[\w-]+):\s*(#[0-9a-fA-F]{6})/g)].map((m) => [m[1], m[2]]));
+const tokens = Object.fromEntries(
+  [...css.matchAll(/--(pm-[\w-]+):\s*(#[0-9a-fA-F]{6})/g)].map((m) => [m[1], m[2]]),
+);
 
 function luminance(hex) {
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  const [r, g, b] = [1, 3, 5]
+    .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 function ratio(a, b) {
@@ -62,7 +66,9 @@ for (const [fg, bg, min, note] of pairs) {
   const r = ratio(tokens[fg], tokens[bg]);
   const ok = r >= min;
   if (!ok) failed++;
-  console.log(`${ok ? "PASS" : "FAIL"}  ${r.toFixed(2).padStart(5)}:1  (min ${min})  ${fg} on ${bg} — ${note}`);
+  console.log(
+    `${ok ? "PASS" : "FAIL"}  ${r.toFixed(2).padStart(5)}:1  (min ${min})  ${fg} on ${bg} — ${note}`,
+  );
 }
 console.log(failed ? `\n${failed} pairing(s) below WCAG AA.` : "\nAll pairings meet WCAG AA.");
 process.exit(failed ? 1 : 0);

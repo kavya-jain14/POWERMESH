@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { PolicyEditor } from "@/components/provider/PolicyEditor";
-import { PageHeader } from "@/components/common/PageHeader";
 import { Forbidden } from "@/components/common/Forbidden";
+import { PageHeader } from "@/components/common/PageHeader";
+import { PolicyEditor } from "@/components/provider/PolicyEditor";
 import { getRole } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Sharing policy" };

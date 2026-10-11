@@ -28,13 +28,11 @@ import type {
   InputFileMeta,
   InputSummary,
   Job,
-  ParamsSchema,
   RiskBlockedDetails,
   RiskExplanation,
   SubmitJobRequest,
-  WorkloadDefinition,
 } from "@/contracts-draft/types";
-import { getWorkload } from "@/contracts-draft/workloads";
+import { getWorkload, WORKLOADS } from "@/contracts-draft/workloads";
 import sampleManifest from "@/mock/sample-manifest.json";
 
 export const COORDINATOR_URL = (
@@ -280,13 +278,18 @@ interface BridgeMemory {
    * the coordinator authorised it for.
    */
   jobs: Map<string, { at: number; job: CoordinatorJob }>;
+  workloadIds: Map<string, string>;
 }
 
-const memory: BridgeMemory = ((globalThis as { __pmLiveBridge?: BridgeMemory }).__pmLiveBridge ??= {
+const bridgeGlobal = globalThis as { __pmLiveBridge?: BridgeMemory };
+bridgeGlobal.__pmLiveBridge ??= {
   inputs: new Map(),
   risk: new Map(),
   jobs: new Map(),
-});
+  workloadIds: new Map(),
+};
+const memory: BridgeMemory = bridgeGlobal.__pmLiveBridge;
+memory.workloadIds ??= new Map();
 
 const JOB_CACHE_MS = 2500;
 
@@ -371,7 +374,7 @@ async function toView(job: CoordinatorJob): Promise<Job> {
 
 export async function fetchJob(id: string, { fresh = false } = {}): Promise<CoordinatorJob> {
   if (!/^[0-9a-f-]{36}$/i.test(id))
-    throw new BridgeError(404, "NOT_FOUND", UPSTREAM_MESSAGE.NOT_FOUND!);
+    throw new BridgeError(404, "NOT_FOUND", UPSTREAM_MESSAGE.NOT_FOUND ?? "Not found.");
   const who = await currentRequesterKey();
   const cached = who ? memory.jobs.get(`${who}:${id}`) : undefined;
   const terminal = cached && COORDINATOR_TERMINAL.includes(cached.job.state);
@@ -418,12 +421,74 @@ function inputsFor(req: SubmitJobRequest): { summary: InputSummary; digests: str
   };
 }
 
+/** The coordinator's catalogue ids (UUIDs) by workload name. Fetched once per process. */
+async function coordinatorWorkloadId(name: string): Promise<string> {
+  const known = memory.workloadIds.get(name);
+  if (known) return known;
+  const { status, body } = await upstream<{ workloads?: { id: string; name: string }[] }>(
+    "/v1/workloads",
+  );
+  if (status !== 200) raise(status, body);
+  for (const w of body.workloads ?? []) memory.workloadIds.set(w.name, w.id);
+  const id = memory.workloadIds.get(name);
+  if (!id) {
+    throw new BridgeError(
+      503,
+      "UNAVAILABLE",
+      `The coordinator has no "${name}" workload configured. Set POWERMESH_IMAGE_TRANSFORM_IMAGE for the API and restart it.`,
+    );
+  }
+  return id;
+}
+
 export async function submitJob(req: SubmitJobRequest): Promise<Job> {
-  const { summary, digests } = inputsFor(req);
+  const workload = getWorkload(req.workloadId);
+  if (!workload)
+    throw new BridgeError(400, "VALIDATION_FAILED", "Pick a workload from the catalogue.", {
+      workloadId: "Unknown workload.",
+    });
+
+  const { summary } = inputsFor(req);
+
+  // The catalogue fixes the network mode (offline). A different choice is classified by the coordinator's own policy
+  // engine first, so the block and its reasons still come from the real rules.
+  if (req.networkMode !== "OFFLINE") {
+    const decision = await classify({
+      cpu: workload.limits.cpuCores,
+      memoryMb: Math.round(workload.limits.memoryBytes / MB),
+      timeoutSeconds: workload.limits.timeoutSeconds,
+      maxOutputBytes: 50 * MB,
+      networkMode: req.networkMode,
+      allowedHosts: [],
+      needsHostMount: false,
+      privileged: false,
+      dockerSocket: false,
+      deviceAccess: workload.needsDeviceAccess,
+      arbitraryImage: workload.runsRequesterCode || !workload.signatureVerified,
+    });
+    if (!decision.executableInMvp) {
+      const details: RiskBlockedDetails = { risk: explain(decision, new Date().toISOString()) };
+      throw new BridgeError(
+        422,
+        "RISK_BLOCKED",
+        "This request is blocked by the current safety policy.",
+        undefined,
+        { ...details },
+      );
+    }
+    throw new BridgeError(
+      400,
+      "VALIDATION_FAILED",
+      "Coordinator v0 runs this workload offline only.",
+      { networkMode: "Choose Offline." },
+    );
+  }
+
   const candidate = {
-    workloadId: req.workloadId,
+    workloadId: await coordinatorWorkloadId(workload.id),
     params: req.params,
-    inputDigests: digests,
+    // Artifact upload isn't wired in API v0 (input.available = false), so no digests are sent yet.
+    inputDigests: [],
   };
 
   // Validate against the shared contract before sending, so the error points at our field, not theirs.
@@ -459,6 +524,11 @@ export async function submitJob(req: SubmitJobRequest): Promise<Job> {
       { ...details },
     );
   }
+  if (status === 400 && body.error === "INVALID_WORKLOAD_PARAMS") {
+    throw new BridgeError(400, "VALIDATION_FAILED", "The coordinator rejected these settings.", {
+      params: "Check the values against their limits.",
+    });
+  }
   if (status !== 201 || !body.job) raise(status, body);
 
   const job = body.job;
@@ -478,55 +548,68 @@ export async function coordinatorHealth(): Promise<{ reachable: boolean; storage
   }
 }
 
-type CoordinatorCatalogueWorkload = JobSubmission["workload"] & {
-  resources: WorkloadRequest;
-  input: {
-    available: boolean;
-    contentTypes: string[];
-    maxFiles: number;
-    maxBytesPerFile: number;
-    maxTotalBytes: number;
-  };
-  paramsSchema: ParamsSchema;
+export const CATALOGUE = WORKLOADS;
+
+/* ── Risk explanation (Gemini on the coordinator; advisory only) ────────── */
+
+export interface RiskExplanationText {
+  summary: string;
+  reasons: string[];
+  providerAdvice: string;
+  source: "gemini" | "template";
+  label: string;
+}
+
+const TIER_SUMMARY: Record<RiskTier, string> = {
+  LOW: "PowerMesh policy rates this job low risk: it fits the default sandbox limits.",
+  MEDIUM:
+    "PowerMesh policy rates this job medium risk: it can run, but only after the provider reviews it.",
+  HIGH: "PowerMesh policy rates this job high risk, so it never runs on personal devices.",
+  BLOCKED: "PowerMesh policy blocks this job, so it is never scheduled on any provider.",
 };
 
-/** Adapt the coordinator-owned catalogue to the richer presentation model used by the UI. */
-export async function getCatalogue(): Promise<WorkloadDefinition[]> {
-  const { status, body } = await upstream<{ workloads?: CoordinatorCatalogueWorkload[] }>(
-    "/v1/workloads",
-  );
-  if (status !== 200 || !Array.isArray(body.workloads)) raise(status, body);
+/** Used when the coordinator can't be reached: same rules, no AI. */
+function localTemplate(risk: RiskExplanation): RiskExplanationText {
+  return {
+    summary: TIER_SUMMARY[risk.tier],
+    reasons: risk.facts.slice(0, 4).map((f) => f.label),
+    providerAdvice:
+      risk.tier === "LOW" || risk.tier === "MEDIUM"
+        ? "Approve it only if your schedule and limits allow it."
+        : "No action is needed; it never reaches a personal device.",
+    source: "template",
+    label: "Standard explanation from PowerMesh policy rules.",
+  };
+}
 
-  return body.workloads.flatMap((entry) => {
-    const presentation = getWorkload(entry.name);
-    if (!presentation) return [];
-
-    return [
+/**
+ * Sends only closed-vocabulary facts: fact codes, plus the coordinator's own reason strings (which it re-checks against
+ * its allowlist). Never filenames, params or identities. The tier shown stays the policy's; this returns text only.
+ */
+export async function explainRisk(input: RiskExplanation): Promise<RiskExplanationText> {
+  // What blocks or raises the tier matters most, so it goes first.
+  const weight = { blocks: 0, raises: 1, lowers: 2 } as const;
+  const risk = {
+    ...input,
+    facts: [...input.facts].sort((a, b) => (weight[a.effect] ?? 3) - (weight[b.effect] ?? 3)),
+  };
+  const factCodes = risk.facts
+    .map((f) => f.code)
+    .filter((c) => !c.startsWith("COORDINATOR_REASON_"));
+  const reasons = risk.facts
+    .filter((f) => f.code.startsWith("COORDINATOR_REASON_"))
+    .map((f) => f.label);
+  try {
+    const { status, body } = await asRequester<{ explanation?: RiskExplanationText }>(
+      "/v1/risk/explain",
       {
-        ...presentation,
-        id: entry.id,
-        version: entry.version,
-        imageDigest: entry.imageDigest,
-        input: { ...presentation.input, ...entry.input },
-        paramsSchema: entry.paramsSchema,
-        needsDeviceAccess: entry.resources.deviceAccess,
-        accelerator: entry.resources.accelerator === "NVIDIA_CUDA" ? "cuda" : "none",
-        runsRequesterCode: entry.resources.arbitraryImage,
-        allowedNetworkModes: [entry.resources.networkMode],
-        limits: {
-          ...presentation.limits,
-          cpuCores: entry.resources.cpu,
-          memoryBytes: entry.resources.memoryMb * MB,
-          timeoutSeconds: entry.resources.timeoutSeconds,
-          maxOutputBytes: entry.resources.maxOutputBytes,
-        },
-        availability: entry.input.available
-          ? ({ status: "available" } as const)
-          : ({
-              status: "unavailable",
-              reason: "Input artifact transport is not enabled on this coordinator yet.",
-            } as const),
+        method: "POST",
+        body: JSON.stringify({ tier: risk.tier, factCodes, reasons }),
       },
-    ];
-  });
+    );
+    if (status === 200 && body.explanation) return body.explanation;
+  } catch {
+    /* coordinator unreachable: fall through */
+  }
+  return localTemplate(risk);
 }

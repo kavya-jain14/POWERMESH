@@ -69,9 +69,10 @@
   overflow-y: auto;
 }
 
-@media (min-width: 1120px) {
+@media (min-width: 960px) {
+  /* Same specificity as .drawer and later in the file, so this wins without !important. */
   .drawer {
-    display: none !important;
+    display: none;
   }
 }
 

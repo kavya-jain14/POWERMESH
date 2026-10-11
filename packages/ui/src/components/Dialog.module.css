@@ -35,13 +35,25 @@
 }
 
 @keyframes slide-in {
-  from { transform: translateX(24px); opacity: 0; }
-  to { transform: none; opacity: 1; }
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
 }
 
 @keyframes fade-in {
-  from { transform: translateY(8px); opacity: 0; }
-  to { transform: none; opacity: 1; }
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
 }
 
 .inner {

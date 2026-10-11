@@ -101,12 +101,56 @@
   margin-top: 3px;
 }
 
-.effect-lowers .riskFactIcon { color: var(--pm-success); }
-.effect-raises .riskFactIcon { color: var(--pm-warning); }
-.effect-blocks .riskFactIcon { color: var(--pm-danger); }
-.effect-blocks { font-weight: var(--pm-weight-medium); }
+.effect-lowers .riskFactIcon {
+  color: var(--pm-success);
+}
+.effect-raises .riskFactIcon {
+  color: var(--pm-warning);
+}
+.effect-blocks .riskFactIcon {
+  color: var(--pm-danger);
+}
+.effect-blocks {
+  font-weight: var(--pm-weight-medium);
+}
 
 .riskFoot {
   font-size: var(--pm-text-xs);
   color: var(--pm-ink-3);
+}
+
+/* AI risk explanation: advisory, visually secondary to the policy decision above it. */
+.aiNote {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pm-space-2);
+  padding: var(--pm-space-3) var(--pm-space-4);
+  border: 1px dashed var(--pm-border);
+  border-radius: var(--pm-radius-md);
+  background: var(--pm-surface-sunken);
+  font-size: var(--pm-text-sm);
+}
+
+.aiNoteLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--pm-space-2);
+  font-size: var(--pm-text-xs);
+  color: var(--pm-ink-3);
+}
+
+.aiNote p,
+.aiNote ul {
+  margin: 0;
+}
+
+.aiNote ul {
+  padding-left: var(--pm-space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--pm-space-1);
+}
+
+.aiNoteAdvice {
+  color: var(--pm-ink-2);
 }

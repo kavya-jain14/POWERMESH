@@ -1,8 +1,8 @@
 "use client";
 
+import { Banner, Button, Dialog, Field, Select, Toggle } from "@powermesh/ui";
 import { useState } from "react";
-import { Button, Dialog, Toggle, Select, Field, Banner } from "@powermesh/ui";
-import { ApiError, devApi, type DevFlags } from "@/lib/api";
+import { ApiError, type DevFlags, devApi } from "@/lib/api";
 
 /**
  * Offline-demo rehearsal controls (Q30: explicit offline-demo mode only). Rehearse network failure and
@@ -47,7 +47,12 @@ export function DemoControls() {
         description="Simulate failures to rehearse the demo. Offline demo only."
         footer={
           <>
-            <Button variant="secondary" icon="refresh" loading={busy} onClick={() => void send("reset")}>
+            <Button
+              variant="secondary"
+              icon="refresh"
+              loading={busy}
+              onClick={() => void send("reset")}
+            >
               Reset demo data
             </Button>
             <Button variant="primary" onClick={() => setOpen(false)}>
@@ -81,8 +86,15 @@ export function DemoControls() {
               label="Open incident"
               description="Shows the incident state in the Control Room."
             />
-            <Field label="Simulation pace" hint="Slower pace stretches each step for a narrated demo.">
-              <Select value={String(flags.pace)} disabled={busy} onChange={(e) => void send("pace", Number(e.target.value))}>
+            <Field
+              label="Simulation pace"
+              hint="Slower pace stretches each step for a narrated demo."
+            >
+              <Select
+                value={String(flags.pace)}
+                disabled={busy}
+                onChange={(e) => void send("pace", Number(e.target.value))}
+              >
                 <option value="0.3">Fast (×0.3)</option>
                 <option value="1">Demo (×1)</option>
                 <option value="2">Narrated (×2)</option>

@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { ROLE_COOKIE, errorResponse } from "@/mock/http";
+import { errorResponse, ROLE_COOKIE } from "@/mock/http";
 import { assertOfflineDemoEnabled } from "@/mock/store";
 
 export const dynamic = "force-dynamic";

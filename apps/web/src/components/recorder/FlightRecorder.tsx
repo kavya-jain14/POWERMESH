@@ -331,9 +331,7 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
                     label: "Runs on",
                     value: job.assignment
                       ? `${job.assignment.nodeLabel} · ${job.assignment.isolation}`
-                      : job.resultSummary
-                        ? `${job.resultSummary.gpuName} · provider GPU`
-                        : "Not assigned yet",
+                      : "Not assigned yet",
                   },
                   ...(role !== "requester"
                     ? [{ label: "Requested by", value: job.requesterLabel }]

@@ -26,7 +26,10 @@ export function formatMaybeBytes(bytes: number | null | undefined): string {
 }
 
 /** "3 files · 7.3 MB", or "3 files" when sizes weren't reported. */
-export function formatInputs(inputs: { count: number; totalBytes: number | null }, noun = "file"): string {
+export function formatInputs(
+  inputs: { count: number; totalBytes: number | null },
+  noun = "file",
+): string {
   const files = `${inputs.count} ${noun}${inputs.count === 1 ? "" : "s"}`;
   return inputs.totalBytes == null ? files : `${files} · ${formatBytes(inputs.totalBytes)}`;
 }
@@ -42,11 +45,22 @@ export function formatDuration(totalSeconds: number): string {
 }
 
 export function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+  return new Date(iso).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
 }
 
 export function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
 }
 
 export function formatRelative(iso: string, now = Date.now()): string {

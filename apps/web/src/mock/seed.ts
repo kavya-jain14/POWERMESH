@@ -44,7 +44,12 @@ export function seedNodes(now: number): ProviderNode[] {
         diskBytes: 20 * GB,
         accelerator: "none",
         networkModes: ["OFFLINE"],
-        isolation: { declared: ["docker-rootless", "gvisor"], verified: ["docker-rootless", "gvisor"], probeStatus: "verified", probedAt: iso(4 * 60_000) },
+        isolation: {
+          declared: ["docker-rootless", "gvisor"],
+          verified: ["docker-rootless", "gvisor"],
+          probeStatus: "verified",
+          probedAt: iso(4 * 60_000),
+        },
       },
     },
     {
@@ -66,7 +71,12 @@ export function seedNodes(now: number): ProviderNode[] {
         accelerator: "none",
         networkModes: ["OFFLINE"],
         // Offline since it was enrolled: the Agent hasn't probed isolation yet, so nothing counts (Q11).
-        isolation: { declared: ["docker-rootless"], verified: [], probeStatus: "pending", probedAt: null },
+        isolation: {
+          declared: ["docker-rootless"],
+          verified: [],
+          probeStatus: "pending",
+          probedAt: null,
+        },
       },
     },
     {
@@ -88,7 +98,13 @@ export function seedNodes(now: number): ProviderNode[] {
         accelerator: "none",
         networkModes: ["OFFLINE"],
         // Declared but the Agent probe failed — the UI must not claim any isolation is active.
-        isolation: { declared: ["docker-rootless", "gvisor"], verified: [], probeStatus: "failed", probedAt: iso(40_000), failureCode: "ROOTLESS_REQUIRED" },
+        isolation: {
+          declared: ["docker-rootless", "gvisor"],
+          verified: [],
+          probeStatus: "failed",
+          probedAt: iso(40_000),
+          failureCode: "ROOTLESS_REQUIRED",
+        },
       },
     },
   ];
@@ -104,7 +120,14 @@ export function seedPolicies(now: number): ProviderPolicy[] {
       consentMode: "ask",
       schedule: { mode: "always", timezone: TIMEZONE },
       networkModes: ["OFFLINE"],
-      resourceCaps: { cpuCores: 2, memoryBytes: 2 * GB, diskBytes: 5 * GB, timeoutSeconds: 900, pidLimit: 128, maxOutputBytes: 100 * MB },
+      resourceCaps: {
+        cpuCores: 2,
+        memoryBytes: 2 * GB,
+        diskBytes: 5 * GB,
+        timeoutSeconds: 900,
+        pidLimit: 128,
+        maxOutputBytes: 100 * MB,
+      },
       updatedAt,
     },
     {
@@ -114,7 +137,14 @@ export function seedPolicies(now: number): ProviderPolicy[] {
       consentMode: "auto",
       schedule: { mode: "window", start: "18:00", end: "08:00", timezone: TIMEZONE },
       networkModes: ["OFFLINE"],
-      resourceCaps: { cpuCores: 4, memoryBytes: 4 * GB, diskBytes: 10 * GB, timeoutSeconds: 1800, pidLimit: 256, maxOutputBytes: 200 * MB },
+      resourceCaps: {
+        cpuCores: 4,
+        memoryBytes: 4 * GB,
+        diskBytes: 10 * GB,
+        timeoutSeconds: 1800,
+        pidLimit: 256,
+        maxOutputBytes: 200 * MB,
+      },
       updatedAt,
     },
     {
@@ -124,7 +154,14 @@ export function seedPolicies(now: number): ProviderPolicy[] {
       consentMode: "ask",
       schedule: { mode: "always", timezone: TIMEZONE },
       networkModes: ["OFFLINE"],
-      resourceCaps: { cpuCores: 2, memoryBytes: 2 * GB, diskBytes: 5 * GB, timeoutSeconds: 900, pidLimit: 128, maxOutputBytes: 100 * MB },
+      resourceCaps: {
+        cpuCores: 2,
+        memoryBytes: 2 * GB,
+        diskBytes: 5 * GB,
+        timeoutSeconds: 900,
+        pidLimit: 128,
+        maxOutputBytes: 100 * MB,
+      },
       updatedAt,
     },
   ];

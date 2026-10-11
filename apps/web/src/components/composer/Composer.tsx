@@ -15,7 +15,8 @@ import {
   useAnnouncer,
 } from "@powermesh/ui";
 import { useRouter } from "next/navigation";
-import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type FormEvent, useCallback, useMemo, useRef, useState } from "react";
+import { AiRiskNote } from "@/components/common/AiRiskNote";
 import { RiskExplanationView } from "@/components/common/JobBits";
 import {
   contentTypeLabel,
@@ -86,10 +87,13 @@ export function Composer() {
   // Q28: form controls are rendered from the workload's paramsSchema + x-ui hints.
   const specs = useMemo(() => (workload ? paramSpecs(workload.paramsSchema) : []), [workload]);
 
-  const paramValue = (key: string): string => {
-    const spec = specs.find((p) => p.key === key);
-    return params[key] ?? (spec ? String(spec.default) : "");
-  };
+  const paramValue = useCallback(
+    (key: string): string => {
+      const spec = specs.find((p) => p.key === key);
+      return params[key] ?? (spec ? String(spec.default) : "");
+    },
+    [specs, params],
+  );
 
   // Client-side checks are a convenience only; the coordinator and Agent re-validate everything.
   const errors: Errors = useMemo(() => {
@@ -127,8 +131,7 @@ export function Composer() {
     if (network === "RESTRICTED" && !workload.allowedNetworkModes.includes("RESTRICTED"))
       e.network = "This workload only runs offline.";
     return e;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workload, hasInputs, specs, source, uploads, params, network]);
+  }, [workload, specs, source, uploads, paramValue, network]);
 
   const risk = useMemo(
     () => (workload ? classifyRisk(workload, network) : null),
@@ -303,36 +306,86 @@ export function Composer() {
                   : "No files or requester code are sent to this workload."
               }
             >
-              {hasInputs ? (
-                <div className="pm-stack-sm">
-                  <ChoiceGroup<InputSource>
-                    legend="Images to transform"
-                    name="source"
-                    value={source}
-                    onChange={(v) => {
-                      setSource(v);
-                      setServerErrors({});
-                    }}
-                    options={[
-                      {
-                        value: "sample",
-                        label: "Demo sample set",
-                        description: "3 abstract images, safe to share. Works without internet.",
-                      },
-                      {
-                        value: "upload",
-                        label: "Upload images",
-                        description: "Your own PNG, JPEG or WebP files.",
-                      },
-                    ]}
-                  />
-                  {source === "sample" ? (
-                    <ul role="list" className={styles.thumbs}>
-                      {SAMPLE_SET.files.map((f) => (
-                        <li key={f.name}>
-                          {/* Static, bundled raster samples only — never untrusted content. */}
-                          <img src={f.src} alt="" width={160} height={107} loading="lazy" />
-                          <span className="pm-small pm-mono">{f.name}</span>
+              <div className="pm-stack-sm">
+                <ChoiceGroup<InputSource>
+                  legend="Images to transform"
+                  name="source"
+                  value={source}
+                  onChange={(v) => {
+                    setSource(v);
+                    setServerErrors({});
+                  }}
+                  options={[
+                    {
+                      value: "sample",
+                      label: "Demo sample set",
+                      description: "3 abstract images, safe to share. Works without internet.",
+                    },
+                    {
+                      value: "upload",
+                      label: "Upload images",
+                      description: "Your own PNG, JPEG or WebP files.",
+                    },
+                  ]}
+                />
+                {source === "sample" ? (
+                  <ul
+                    // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none, so the role is restored explicitly.
+                    role="list"
+                    className={styles.thumbs}
+                  >
+                    {SAMPLE_SET.files.map((f) => (
+                      <li key={f.name}>
+                        {/* biome-ignore lint/performance/noImgElement: static, bundled raster samples (never untrusted content); a plain img keeps the offline demo free of the image optimiser. */}
+                        <img src={f.src} alt="" width={160} height={107} loading="lazy" />
+                        <span className="pm-small pm-mono">{f.name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="pm-stack-sm">
+                    <Field
+                      label="Choose images"
+                      hint={
+                        IS_LIVE
+                          ? "Only file names, types and sizes are sent — the coordinator has no upload storage yet, so it receives no input digests for your own files."
+                          : USES_SIMULATOR
+                            ? "Offline demo: only file names, types and sizes are sent — outputs use the demo images. These checks are early feedback, not a security guarantee — the server validates again."
+                            : "Files are uploaded to scoped, short-lived storage and staged read-only for the job."
+                      }
+                      error={showErrors ? allErrors.inputs : undefined}
+                    >
+                      <input
+                        type="file"
+                        multiple
+                        accept={workload.input.contentTypes.join(",")}
+                        onChange={onUpload}
+                        className={styles.file}
+                      />
+                    </Field>
+                    {uploads.length > 0 ? (
+                      <ul
+                        // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none, so the role is restored explicitly.
+                        role="list"
+                        className={styles.fileList}
+                      >
+                        {uploads.map((f) => {
+                          const ok =
+                            workload.input.contentTypes.includes(f.contentType) &&
+                            f.bytes <= workload.input.maxBytesPerFile;
+                          return (
+                            <li key={f.name} className={ok ? undefined : styles.fileBad}>
+                              <Icon name={ok ? "image" : "alert"} />
+                              <span className="pm-mono">{f.name}</span>
+                              <span className="pm-muted">
+                                {contentTypeLabel(f.contentType)} · {formatBytes(f.bytes)}
+                              </span>
+                            </li>
+                          );
+                        })}
+                        <li className="pm-muted pm-small">
+                          {uploads.length} file{uploads.length === 1 ? "" : "s"} ·{" "}
+                          {formatBytes(totalUpload)} total
                         </li>
                       ))}
                     </ul>
@@ -451,10 +504,6 @@ export function Composer() {
                       { label: "Time", value: formatDuration(workload.limits.timeoutSeconds) },
                       { label: "Processes", value: workload.limits.pidLimit ?? "Not reported" },
                       {
-                        label: "Accelerator",
-                        value: workload.accelerator === "cuda" ? "1 × NVIDIA CUDA GPU" : "None",
-                      },
-                      {
                         label: "Isolation",
                         value:
                           workload.minimumIsolation === "docker-rootless"
@@ -507,9 +556,8 @@ export function Composer() {
                     { label: "Workload", value: `${workload.name} v${workload.version}` },
                     {
                       label: "Inputs",
-                      value: !hasInputs
-                        ? "None — fixed benchmark"
-                        : source === "sample"
+                      value:
+                        source === "sample"
                           ? "Demo sample set · 3 PNG images"
                           : `${uploads.length} image${uploads.length === 1 ? "" : "s"} · ${formatBytes(totalUpload)}`,
                     },
@@ -531,6 +579,9 @@ export function Composer() {
                         ? "Choose Offline under Network to continue."
                         : "Change the choice marked “Blocks” to continue."}
                   </Banner>
+                ) : null}
+                {blocked ? (
+                  <AiRiskNote risk={risk} />
                 ) : (
                   <p className="pm-small pm-muted">
                     The coordinator re-checks policy on submit. A provider must approve before
@@ -555,6 +606,7 @@ export function Composer() {
                       compact
                     />
                   ) : null}
+                  {serverBlock.risk ? <AiRiskNote risk={serverBlock.risk} /> : null}
                   <p className="pm-small">
                     Reference:{" "}
                     <span className="pm-mono">

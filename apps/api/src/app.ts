@@ -13,6 +13,8 @@ import {
 } from "@powermesh/contracts";
 import Fastify from "fastify";
 import { z } from "zod";
+import { GeminiClient, geminiConfigFromEnv } from "./ai/gemini";
+import { RiskExplainer, riskExplainRequestSchema } from "./ai/risk-explainer";
 import {
   constantTimeTokenMatch,
   createAgentToken,
@@ -33,6 +35,7 @@ interface BuildAppOptions {
   rateLimitMax?: number;
   workloadCatalog?: WorkloadCatalog;
   autoMatch?: boolean;
+  riskExplainer?: RiskExplainer;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -45,6 +48,8 @@ export function buildApp(options: BuildAppOptions = {}) {
   const workloadCatalog = options.workloadCatalog ?? createConfiguredWorkloadCatalog();
   const matcher = new CoordinatorMatcher(store, offerSigner, now);
   const autoMatch = options.autoMatch ?? true;
+  const riskExplainer =
+    options.riskExplainer ?? new RiskExplainer(new GeminiClient(geminiConfigFromEnv()));
 
   app.register(rateLimit, {
     global: true,
@@ -122,6 +127,24 @@ export function buildApp(options: BuildAppOptions = {}) {
 
       return classifyRisk(parsed.data);
     });
+
+    // Advisory text only: the tier in the response is echoed from the request, never from the model.
+    app.post(
+      "/v1/risk/explain",
+      { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const requester = await authenticateRequester(request.headers.authorization);
+        if (!requester) {
+          return reply.code(401).send({ error: "INVALID_REQUESTER_CREDENTIAL" });
+        }
+        const parsed = riskExplainRequestSchema.safeParse(request.body);
+        if (!parsed.success) {
+          return reply.code(400).send({ error: "INVALID_RISK", issues: parsed.error.issues });
+        }
+        const explanation = await riskExplainer.explain(parsed.data);
+        return { tier: parsed.data.tier, explanation };
+      },
+    );
 
     app.post(
       "/v1/requesters/register",

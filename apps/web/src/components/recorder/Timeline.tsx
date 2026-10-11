@@ -1,7 +1,7 @@
-import { Icon, cx } from "@powermesh/ui";
-import type { JobEvent, JobState } from "@/contracts-draft/types";
-import { formatTime } from "@/contracts-draft/format";
+import { cx, Icon } from "@powermesh/ui";
 import { JobStateBadge } from "@/components/common/JobBits";
+import { formatTime } from "@/contracts-draft/format";
+import type { JobEvent, JobState } from "@/contracts-draft/types";
 import styles from "./Recorder.module.css";
 
 const MILESTONES: Array<{ label: string; states: JobState[] }> = [
@@ -14,7 +14,14 @@ const MILESTONES: Array<{ label: string; states: JobState[] }> = [
   { label: "Result", states: ["SUCCEEDED"] },
 ];
 
-const FAILURE_STATES: JobState[] = ["REJECTED", "DECLINED", "EXPIRED", "FAILED", "CANCELLED", "TIMED_OUT"];
+const FAILURE_STATES: JobState[] = [
+  "REJECTED",
+  "DECLINED",
+  "EXPIRED",
+  "FAILED",
+  "CANCELLED",
+  "TIMED_OUT",
+];
 
 /** Short tags for coded timeline events: the Agent's stop steps (Q22) and lease events (Q1, Q4). */
 const CODE_LABEL: Record<NonNullable<JobEvent["code"]>, string> = {
@@ -27,13 +34,26 @@ const CODE_LABEL: Record<NonNullable<JobEvent["code"]>, string> = {
 };
 
 /** Compact milestone strip. Derived only from received state events — never guessed. */
-export function Milestones({ events, current }: { events: JobEvent[]; current: JobState | undefined }) {
+export function Milestones({
+  events,
+  current,
+}: {
+  events: JobEvent[];
+  current: JobState | undefined;
+}) {
   const attempt = Math.max(1, ...events.map((e) => e.attempt));
-  const reached = new Set(events.filter((e) => e.type === "state" && e.attempt === attempt && e.state).map((e) => e.state!));
+  const reached = new Set(
+    events.flatMap((e) =>
+      e.type === "state" && e.attempt === attempt && e.state ? [e.state] : [],
+    ),
+  );
   // A retry re-enters at QUEUED (Q1), so the submit milestone stays reached for the new attempt.
   if (attempt > 1) reached.add("SUBMITTED");
   const failedAt = current && FAILURE_STATES.includes(current) ? current : undefined;
-  const lastReachedIdx = MILESTONES.reduce((idx, m, i) => (m.states.some((s) => reached.has(s)) ? i : idx), -1);
+  const lastReachedIdx = MILESTONES.reduce(
+    (idx, m, i) => (m.states.some((s) => reached.has(s)) ? i : idx),
+    -1,
+  );
 
   return (
     <ol className={styles.milestones} aria-label="Progress through job stages">
@@ -41,15 +61,30 @@ export function Milestones({ events, current }: { events: JobEvent[]; current: J
         const done = m.states.some((s) => reached.has(s));
         const isCurrent = i === lastReachedIdx && !failedAt && current !== "SUCCEEDED";
         const stoppedHere = failedAt && i === lastReachedIdx;
-        const status = stoppedHere ? "stopped here" : isCurrent ? "in progress" : done ? "done" : "not reached";
+        const status = stoppedHere
+          ? "stopped here"
+          : isCurrent
+            ? "in progress"
+            : done
+              ? "done"
+              : "not reached";
         return (
           <li
             key={m.label}
-            className={cx(styles.milestone, done && styles.milestoneDone, isCurrent && styles.milestoneCurrent, stoppedHere && styles.milestoneStopped)}
+            className={cx(
+              styles.milestone,
+              done && styles.milestoneDone,
+              isCurrent && styles.milestoneCurrent,
+              stoppedHere && styles.milestoneStopped,
+            )}
             aria-current={isCurrent ? "step" : undefined}
           >
             <span className={styles.milestoneDot} aria-hidden="true">
-              {stoppedHere ? <Icon name="x" size={10} /> : done && !isCurrent ? <Icon name="check" size={10} /> : null}
+              {stoppedHere ? (
+                <Icon name="x" size={10} />
+              ) : done && !isCurrent ? (
+                <Icon name="check" size={10} />
+              ) : null}
             </span>
             <span className={styles.milestoneLabel}>{m.label}</span>
             <span className="pm-visually-hidden">: {status}</span>
@@ -69,7 +104,9 @@ export function Timeline({ events, showLogs }: { events: JobEvent[]; showLogs: b
     <div className={styles.timelineWrap}>
       {attempts.map((attempt) => (
         <section key={attempt} aria-label={attempts.length > 1 ? `Attempt ${attempt}` : undefined}>
-          {attempts.length > 1 ? <h3 className={styles.attemptHeading}>Attempt {attempt}</h3> : null}
+          {attempts.length > 1 ? (
+            <h3 className={styles.attemptHeading}>Attempt {attempt}</h3>
+          ) : null}
           <ol className={styles.timeline}>
             {visible
               .filter((e) => e.attempt === attempt)
@@ -88,11 +125,17 @@ export function Timeline({ events, showLogs }: { events: JobEvent[]; showLogs: b
                     ) : null}
                     {e.message ? (
                       <p className={styles.eventMessage}>
-                        {e.code ? <span className={styles.eventCode}>{CODE_LABEL[e.code]}</span> : null}
+                        {e.code ? (
+                          <span className={styles.eventCode}>{CODE_LABEL[e.code]}</span>
+                        ) : null}
                         {e.message}
                       </p>
                     ) : null}
-                    {e.reason && e.type === "state" ? <p className={styles.eventReason}>Reason code: <code>{e.reason}</code></p> : null}
+                    {e.reason && e.type === "state" ? (
+                      <p className={styles.eventReason}>
+                        Reason code: <code>{e.reason}</code>
+                      </p>
+                    ) : null}
                   </div>
                 </li>
               ))}
