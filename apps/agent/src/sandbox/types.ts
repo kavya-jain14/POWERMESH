@@ -18,6 +18,10 @@ export interface SandboxJob {
   isolation: SandboxIsolation;
   networkMode: NetworkMode;
   allowedHosts: string[];
+  accelerator?: {
+    kind: "NVIDIA_CUDA";
+    deviceIds: string[];
+  };
   restrictedNetwork?: {
     networkName: string;
     workloadIp: string;

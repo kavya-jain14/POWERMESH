@@ -14,6 +14,7 @@ import type {
   ApiErrorCode,
   Artifact as ContractArtifact,
   AuditEventType as ContractAuditEventType,
+  GpuBenchmarkResult as ContractGpuBenchmarkResult,
   IsolationCapability as ContractIsolationCapability,
   IsolationLevel as ContractIsolationLevel,
   NetworkHealth as ContractNetworkHealth,
@@ -219,6 +220,7 @@ export interface WorkloadDefinition {
   runsRequesterCode: boolean;
   needsSecrets: boolean;
   needsDeviceAccess: boolean;
+  accelerator?: Accelerator;
   input: {
     contentTypes: string[];
     maxFiles: number;
@@ -349,6 +351,8 @@ export interface Job {
   params: Record<string, string | number | boolean>;
   limits: ResourceLimits;
   networkMode: NetworkMode;
+  accelerator?: Accelerator;
+  resultSummary?: ContractGpuBenchmarkResult;
   risk: RiskExplanation;
   attempt: 1 | 2;
   maxAttempts: 2;

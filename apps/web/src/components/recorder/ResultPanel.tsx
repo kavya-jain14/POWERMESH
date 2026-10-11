@@ -32,6 +32,39 @@ export function ResultPanel({ job, onRefresh }: { job: Job; onRefresh: () => Pro
   const expired = validated.some((a) => a.urlExpiresAt && Date.parse(a.urlExpiresAt) < now);
   const [refreshing, setRefreshing] = useState(false);
 
+  if (job.resultSummary?.type === "gpu-benchmark") {
+    const result = job.resultSummary;
+    return (
+      <Panel
+        variant="strong"
+        title="Verified NVIDIA GPU result"
+        description="Reported by the provider workload and schema-validated by the PowerMesh Agent."
+        actions={
+          <Badge tone="success" icon="shield">
+            CUDA verified
+          </Badge>
+        }
+      >
+        <KeyValue
+          columns={3}
+          items={[
+            { label: "GPU", value: result.gpuName },
+            { label: "CUDA runtime", value: result.cudaRuntime },
+            { label: "Compute capability", value: result.computeCapability },
+            { label: "GPU memory", value: formatBytes(result.memoryMb * 1024 * 1024) },
+            { label: "Matrix", value: `${result.matrixSize} × ${result.matrixSize}` },
+            { label: "Iterations", value: result.iterations },
+            { label: "Kernel time", value: `${result.durationMs.toFixed(3)} ms` },
+            {
+              label: "Result checksum",
+              value: <span className="pm-mono">{result.checksum}</span>,
+            },
+          ]}
+        />
+      </Panel>
+    );
+  }
+
   if (artifacts.length === 0) {
     return (
       <Panel title="Result">

@@ -38,6 +38,7 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
   private effectiveProviderCapacity(node: ProviderNodeRecord): ProviderNodeRecord {
     let reservedCpu = 0;
     let reservedMemoryMb = 0;
+    let reservedGpuCount = 0;
     let reservedJobs = 0;
     for (const { record: offer } of this.offers.values()) {
       if (offer.manifest.nodeId !== node.id) continue;
@@ -45,12 +46,14 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
       if (!job || !capacityReservingStates.has(job.state)) continue;
       reservedCpu += job.resources.cpu;
       reservedMemoryMb += job.resources.memoryMb;
+      reservedGpuCount += job.resources.gpuCount ?? 0;
       reservedJobs += 1;
     }
     return {
       ...node,
       availableCpu: Math.max(0, node.availableCpu - reservedCpu),
       availableMemoryMb: Math.max(0, node.availableMemoryMb - reservedMemoryMb),
+      availableGpuCount: Math.max(0, node.availableGpuCount - reservedGpuCount),
       activeJobs: Math.max(node.activeJobs, reservedJobs),
     };
   }
@@ -146,6 +149,7 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
       id: existing?.record.id ?? randomUUID(),
       availableCpu: existing?.record.availableCpu ?? 0,
       availableMemoryMb: existing?.record.availableMemoryMb ?? 0,
+      availableGpuCount: existing?.record.availableGpuCount ?? 0,
       activeJobs: existing?.record.activeJobs ?? 0,
       status: existing?.record.status ?? "OFFLINE",
       lastHeartbeatAt: existing?.record.lastHeartbeatAt ?? null,
@@ -304,6 +308,25 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
       return { ok: false, reason: "INVALID_STATE" };
     }
     const updated = { ...job, state: nextState, updatedAt: new Date().toISOString() };
+    this.jobs.set(jobId, updated);
+    return { ok: true, value: structuredClone(updated) };
+  }
+
+  async saveResultSummary(
+    jobId: string,
+    nodeId: string,
+    summary: Parameters<CoordinatorStore["saveResultSummary"]>[2],
+  ): Promise<StoreResult<JobRecord>> {
+    const job = this.jobs.get(jobId);
+    if (!job) return { ok: false, reason: "JOB_NOT_FOUND" };
+    const assignment = [...this.offers.values()].find(
+      ({ record }) => record.manifest.jobId === jobId,
+    );
+    if (!assignment?.record.claimedAt) return { ok: false, reason: "JOB_NOT_CLAIMED" };
+    if (assignment.record.manifest.nodeId !== nodeId) {
+      return { ok: false, reason: "NODE_MISMATCH" };
+    }
+    const updated = { ...job, resultSummary: summary, updatedAt: new Date().toISOString() };
     this.jobs.set(jobId, updated);
     return { ok: true, value: structuredClone(updated) };
   }

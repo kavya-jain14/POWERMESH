@@ -1,0 +1,38 @@
+name: Publish demo workload image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [integration/gargi-ui]
+    paths:
+      - Dockerfile.workload-image-transform
+      - Dockerfile.workload-gpu-benchmark
+      - workloads/image-transform/**
+      - workloads/gpu-benchmark/**
+      - .github/workflows/publish-workload.yml
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
+      - name: Build and publish immutable workloads
+        env:
+          IMAGE_TRANSFORM: ghcr.io/${{ github.repository_owner }}/powermesh-image-transform
+          GPU_BENCHMARK: ghcr.io/${{ github.repository_owner }}/powermesh-gpu-benchmark
+        run: |
+          docker build --file Dockerfile.workload-image-transform --tag "$IMAGE_TRANSFORM:demo" .
+          docker push "$IMAGE_TRANSFORM:demo"
+          docker pull "$IMAGE_TRANSFORM:demo"
+          docker inspect --format='POWERMESH_IMAGE_TRANSFORM_IMAGE={{index .RepoDigests 0}}' "$IMAGE_TRANSFORM:demo"
+
+          docker build --file Dockerfile.workload-gpu-benchmark --tag "$GPU_BENCHMARK:demo" .
+          docker push "$GPU_BENCHMARK:demo"
+          docker pull "$GPU_BENCHMARK:demo"
+          docker inspect --format='POWERMESH_GPU_BENCHMARK_IMAGE={{index .RepoDigests 0}}' "$GPU_BENCHMARK:demo"

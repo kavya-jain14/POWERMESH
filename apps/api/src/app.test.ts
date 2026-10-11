@@ -2,7 +2,12 @@ import type { FastifyInstance } from "fastify";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "./app";
 import { createOfferSigner, verifyOfferSignature } from "./offers/signing";
-import { createTestWorkloadCatalog, imageTransformWorkloadId } from "./workloads/catalog";
+import {
+  createConfiguredWorkloadCatalog,
+  createTestWorkloadCatalog,
+  gpuBenchmarkWorkloadId,
+  imageTransformWorkloadId,
+} from "./workloads/catalog";
 
 const enrollmentKey = "enrollment-test-key";
 const workloadCatalog = createTestWorkloadCatalog();
@@ -355,6 +360,120 @@ describe("coordinator API", () => {
     });
     expect(completed.statusCode).toBe(200);
     expect(completed.json().job.state).toBe("SUCCEEDED");
+    await app.close();
+  });
+
+  it("matches a CUDA provider and persists validated GPU proof", async () => {
+    const digest = "b".repeat(64);
+    const gpuCatalog = createConfiguredWorkloadCatalog(
+      `ghcr.io/powermesh/image-transform@sha256:${"a".repeat(64)}`,
+      `ghcr.io/powermesh/gpu-benchmark@sha256:${digest}`,
+    );
+    const app = buildTestApp({ enrollmentKey, workloadCatalog: gpuCatalog });
+    const { requesterToken } = await enrollRequester(app);
+    const registration = await app.inject({
+      method: "POST",
+      url: "/v1/nodes/register",
+      headers: { "x-powermesh-enrollment-key": enrollmentKey },
+      payload: {
+        ownerId: "77777777-7777-4777-8777-777777777777",
+        nodeName: "windows-nvidia-provider",
+        os: "linux",
+        architecture: "x64",
+        agentVersion: "0.1.0",
+        cpuCores: 8,
+        memoryMb: 16384,
+        networkModes: ["OFFLINE"],
+        isolationLevels: ["CONTAINER_BASELINE"],
+        accelerators: [
+          {
+            kind: "NVIDIA_CUDA",
+            index: 0,
+            name: "NVIDIA GeForce RTX 4060 Laptop GPU",
+            memoryMb: 8188,
+          },
+        ],
+      },
+    });
+    const { node, agentToken } = registration.json();
+    await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/heartbeat`,
+      headers: { authorization: `Bearer ${agentToken}` },
+      payload: {
+        availableCpu: 8,
+        availableMemoryMb: 16384,
+        availableGpuCount: 1,
+        activeJobs: 0,
+        status: "ONLINE",
+      },
+    });
+    const submission = await app.inject({
+      method: "POST",
+      url: "/v1/jobs",
+      headers: { authorization: `Bearer ${requesterToken}` },
+      payload: {
+        workloadId: gpuBenchmarkWorkloadId,
+        params: { matrixSize: 2048, iterations: 20 },
+      },
+    });
+    expect(submission.json().job.state).toBe("OFFERED");
+    const jobId = submission.json().job.id;
+    const poll = await app.inject({
+      method: "GET",
+      url: `/v1/nodes/${node.id}/offers`,
+      headers: { authorization: `Bearer ${agentToken}` },
+    });
+    const offer = poll.json().offers[0];
+    await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/offers/${offer.id}/approve`,
+      headers: { authorization: `Bearer ${agentToken}` },
+    });
+    await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/offers/${offer.id}/claim`,
+      headers: { authorization: `Bearer ${agentToken}` },
+      payload: { nonce: offer.manifest.nonce, leaseSeconds: 60 },
+    });
+    await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/jobs/${jobId}/start`,
+      headers: { authorization: `Bearer ${agentToken}` },
+    });
+    const resultSummary = {
+      type: "gpu-benchmark",
+      gpuName: "NVIDIA GeForce RTX 4060 Laptop GPU",
+      cudaRuntime: "12.8",
+      computeCapability: "8.9",
+      memoryMb: 8188,
+      matrixSize: 2048,
+      iterations: 20,
+      durationMs: 3210.125,
+      checksum: "0123456789abcdef",
+    };
+    const completion = await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/jobs/${jobId}/complete`,
+      headers: { authorization: `Bearer ${agentToken}` },
+      payload: {
+        exitCode: 0,
+        timedOut: false,
+        outputTruncated: false,
+        outputValidated: true,
+        stdout: { sizeBytes: 256, digest: `sha256:${digest}` },
+        stderr: { sizeBytes: 0, digest: `sha256:${digest}` },
+        resultSummary,
+      },
+    });
+    expect(completion.statusCode).toBe(200);
+    expect(completion.json().job).toMatchObject({ state: "SUCCEEDED", resultSummary });
+    const read = await app.inject({
+      method: "GET",
+      url: `/v1/jobs/${jobId}`,
+      headers: { authorization: `Bearer ${requesterToken}` },
+    });
+    expect(read.json().resultSummary).toEqual(resultSummary);
     await app.close();
   });
 

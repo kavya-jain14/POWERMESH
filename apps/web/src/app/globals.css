@@ -1,6 +1,30 @@
 @import "@powermesh/ui/tokens.css";
 @import "@powermesh/ui/base.css";
 
+/* Quiet, system-like scrolling: stable geometry and no decorative scroll effects. */
+html {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--pm-line-strong) var(--pm-paper);
+}
+
+html::-webkit-scrollbar {
+  width: 8px;
+}
+
+html::-webkit-scrollbar-track {
+  background: var(--pm-paper);
+}
+
+html::-webkit-scrollbar-thumb {
+  background: var(--pm-line-strong);
+  border: 2px solid var(--pm-paper);
+}
+
+html::-webkit-scrollbar-thumb:hover {
+  background: var(--pm-ink-3);
+}
+
 /* App-level layout helpers. Component styles live in CSS modules. */
 .pm-stack {
   display: flex;

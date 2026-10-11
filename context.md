@@ -70,6 +70,16 @@ docs/design/                           G1 IA + route map, G2 design system
 
 ## Session log
 
+- **2026-10-11 (14, 11:30)** — Pulled GitHub: `main` (= our #12 squash) and Kavya's `integration/gargi-ui` (11 commits:
+  UI wired to coordinator contracts via `getCatalogue()`, landing page, top-bar nav, Windows NVIDIA GPU workload +
+  `docs/demo/windows-gpu-demo.md`, migrations before API start, no-input workloads). 10 conflicted files resolved
+  hunk by hunk: Kavya's side for her contract/catalogue work, our side kept for the Gemini note (Composer, bridge
+  `explainRisk`) and the #12 lint fixes. Dropped our `coordinatorWorkloadId` helper (her `getCatalogue` replaces it).
+  Renamed our heartbeat migration to `0007_node_heartbeat_history.sql` (Kavya's `0006_gpu_execution.sql` took 0006;
+  it's idempotent). Landing page made semantic for Biome (figure, ul, real table, `.heroAccent`). Verified: Biome 0,
+  turbo typecheck + test 9/9 (api 27, agent 36, contracts 23), web build, WCAG AA contrast, live smoke (health,
+  catalogue, submit 201, risk explain), offline demo 41/41 (test reordered: RUNNING is now short).
+
 - **2026-10-11 (14)** — **Lint cleanup to zero.** `biome check` was failing with 227 errors / 26 warnings; ~34 were only
   CRLF line endings from this machine. Fixed the rest in `apps/web` + `packages/ui`: import order + formatting
   (auto), real hook-dependency bugs in Composer (stable `paramValue`, removed unused memo), kill bar is now a
