@@ -47,13 +47,13 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
 
   async function authenticateNode(nodeId: string, authorization: string | undefined) {
-    const token = readBearerToken(authorization);
-    return token ? store.authenticateProvider(nodeId, hashAgentToken(token)) : false;
+    const token = readBearerToken(authorization) ?? "";
+    return store.authenticateProvider(nodeId, hashAgentToken(token));
   }
 
   async function authenticateRequester(authorization: string | undefined) {
-    const token = readBearerToken(authorization);
-    return token ? store.authenticateRequester(hashAgentToken(token)) : null;
+    const token = readBearerToken(authorization) ?? "";
+    return store.authenticateRequester(hashAgentToken(token));
   }
 
   function enrollmentIsAuthorized(header: string | string[] | undefined): boolean {
@@ -128,46 +128,56 @@ export function buildApp(options: BuildAppOptions = {}) {
       },
     );
 
-    app.post("/v1/jobs", async (request, reply) => {
-      const requester = await authenticateRequester(request.headers.authorization);
-      if (!requester) return reply.code(401).send({ error: "INVALID_REQUESTER_CREDENTIAL" });
+    app.post(
+      "/v1/jobs",
+      { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const requester = await authenticateRequester(request.headers.authorization);
+        if (!requester) {
+          return reply.code(401).send({ error: "INVALID_REQUESTER_CREDENTIAL" });
+        }
 
-      const parsed = jobCreationSchema.safeParse(request.body);
-      if (!parsed.success) {
-        return reply.code(400).send({ error: "INVALID_JOB", issues: parsed.error.issues });
-      }
+        const parsed = jobCreationSchema.safeParse(request.body);
+        if (!parsed.success) {
+          return reply.code(400).send({ error: "INVALID_JOB", issues: parsed.error.issues });
+        }
 
-      const risk = classifyRisk(parsed.data.resources);
-      if (!risk.executableInMvp) {
-        return reply.code(422).send({ error: "WORKLOAD_NOT_EXECUTABLE", risk });
-      }
+        const risk = classifyRisk(parsed.data.resources);
+        if (!risk.executableInMvp) {
+          return reply.code(422).send({ error: "WORKLOAD_NOT_EXECUTABLE", risk });
+        }
 
-      const job = await store.createPolicyCheckedJob(
-        { ...parsed.data, requesterId: requester.id },
-        risk,
-      );
-      return reply.code(201).send({ job, risk });
-    });
+        const job = await store.createPolicyCheckedJob(
+          { ...parsed.data, requesterId: requester.id },
+          risk,
+        );
+        return reply.code(201).send({ job, risk });
+      },
+    );
 
-    app.get("/v1/jobs/:id", async (request, reply) => {
-      const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
-      if (!params.success) return reply.code(400).send({ error: "INVALID_JOB_ID" });
+    app.get(
+      "/v1/jobs/:id",
+      { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
+        if (!params.success) return reply.code(400).send({ error: "INVALID_JOB_ID" });
 
-      const requester = await authenticateRequester(request.headers.authorization);
-      const coordinatorAuthorized = coordinatorIsAuthorized(
-        request.headers["x-powermesh-coordinator-key"],
-      );
-      if (!requester && !coordinatorAuthorized) {
-        return reply.code(401).send({ error: "INVALID_REQUESTER_CREDENTIAL" });
-      }
+        const requester = await authenticateRequester(request.headers.authorization);
+        const coordinatorAuthorized = coordinatorIsAuthorized(
+          request.headers["x-powermesh-coordinator-key"],
+        );
+        if (!requester && !coordinatorAuthorized) {
+          return reply.code(401).send({ error: "INVALID_REQUESTER_CREDENTIAL" });
+        }
 
-      const job = await store.findJob(params.data.id);
-      if (!job) return reply.code(404).send({ error: "JOB_NOT_FOUND" });
-      if (requester && job.requesterId !== requester.id) {
-        return reply.code(404).send({ error: "JOB_NOT_FOUND" });
-      }
-      return job;
-    });
+        const job = await store.findJob(params.data.id);
+        if (!job) return reply.code(404).send({ error: "JOB_NOT_FOUND" });
+        if (requester && job.requesterId !== requester.id) {
+          return reply.code(404).send({ error: "JOB_NOT_FOUND" });
+        }
+        return job;
+      },
+    );
 
     app.post(
       "/v1/nodes/register",
@@ -196,138 +206,158 @@ export function buildApp(options: BuildAppOptions = {}) {
       },
     );
 
-    app.post("/v1/nodes/:id/heartbeat", async (request, reply) => {
-      const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
-      const body = providerHeartbeatSchema.safeParse(request.body);
-      if (!params.success || !body.success) {
-        return reply.code(400).send({ error: "INVALID_HEARTBEAT" });
-      }
-      if (!(await authenticateNode(params.data.id, request.headers.authorization))) {
-        return reply.code(401).send({ error: "INVALID_AGENT_CREDENTIAL" });
-      }
+    app.post(
+      "/v1/nodes/:id/heartbeat",
+      { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
+        const body = providerHeartbeatSchema.safeParse(request.body);
+        if (!params.success || !body.success) {
+          return reply.code(400).send({ error: "INVALID_HEARTBEAT" });
+        }
+        if (!(await authenticateNode(params.data.id, request.headers.authorization))) {
+          return reply.code(401).send({ error: "INVALID_AGENT_CREDENTIAL" });
+        }
 
-      const registered = await store.findProvider(params.data.id);
-      if (!registered) return reply.code(404).send({ error: "NODE_NOT_FOUND" });
-      if (
-        body.data.availableCpu > registered.cpuCores ||
-        body.data.availableMemoryMb > registered.memoryMb
-      ) {
-        return reply.code(400).send({ error: "INVALID_ADVERTISED_CAPACITY" });
-      }
+        const registered = await store.findProvider(params.data.id);
+        if (!registered) return reply.code(404).send({ error: "NODE_NOT_FOUND" });
+        if (
+          body.data.availableCpu > registered.cpuCores ||
+          body.data.availableMemoryMb > registered.memoryMb
+        ) {
+          return reply.code(400).send({ error: "INVALID_ADVERTISED_CAPACITY" });
+        }
 
-      const node = await store.heartbeatProvider(params.data.id, body.data);
-      if (!node) return reply.code(404).send({ error: "NODE_NOT_FOUND" });
-      return { node };
-    });
+        const node = await store.heartbeatProvider(params.data.id, body.data);
+        if (!node) return reply.code(404).send({ error: "NODE_NOT_FOUND" });
+        return { node };
+      },
+    );
 
-    app.post("/v1/jobs/:jobId/offers", async (request, reply) => {
-      if (!coordinatorIsAuthorized(request.headers["x-powermesh-coordinator-key"])) {
-        return reply.code(401).send({ error: "INVALID_COORDINATOR_CREDENTIAL" });
-      }
+    app.post(
+      "/v1/jobs/:jobId/offers",
+      { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        if (!coordinatorIsAuthorized(request.headers["x-powermesh-coordinator-key"])) {
+          return reply.code(401).send({ error: "INVALID_COORDINATOR_CREDENTIAL" });
+        }
 
-      const params = z.object({ jobId: z.string().uuid() }).safeParse(request.params);
-      const body = offerCreationSchema.safeParse(request.body);
-      if (!params.success || !body.success) {
-        return reply.code(400).send({ error: "INVALID_OFFER" });
-      }
+        const params = z.object({ jobId: z.string().uuid() }).safeParse(request.params);
+        const body = offerCreationSchema.safeParse(request.body);
+        if (!params.success || !body.success) {
+          return reply.code(400).send({ error: "INVALID_OFFER" });
+        }
 
-      const [job, node] = await Promise.all([
-        store.findJob(params.data.jobId),
-        store.findProvider(body.data.nodeId),
-      ]);
-      if (!job) return reply.code(404).send({ error: "JOB_NOT_FOUND" });
-      if (!node) return reply.code(404).send({ error: "NODE_NOT_FOUND" });
+        const [job, node] = await Promise.all([
+          store.findJob(params.data.jobId),
+          store.findProvider(body.data.nodeId),
+        ]);
+        if (!job) return reply.code(404).send({ error: "JOB_NOT_FOUND" });
+        if (!node) return reply.code(404).send({ error: "NODE_NOT_FOUND" });
 
-      const issuedAt = now();
-      const offerId = randomUUID();
-      const manifest = {
-        version: 1 as const,
-        offerId,
-        jobId: job.id,
-        nodeId: node.id,
-        workload: job.workload,
-        resources: job.resources,
-        params: job.params,
-        inputDigests: job.inputDigests,
-        riskTier: job.riskTier,
-        nonce: randomBytes(32).toString("hex"),
-        issuedAt: issuedAt.toISOString(),
-        expiresAt: new Date(issuedAt.getTime() + body.data.ttlSeconds * 1_000).toISOString(),
-      };
-      const offer: SignedJobOffer = {
-        id: offerId,
-        manifest,
-        signature: offerSigner.sign(manifest),
-        signatureAlgorithm: "Ed25519",
-        keyId: offerSigner.keyId,
-        approvedAt: null,
-        claimedAt: null,
-        leaseUntil: null,
-      };
+        const issuedAt = now();
+        const offerId = randomUUID();
+        const manifest = {
+          version: 1 as const,
+          offerId,
+          jobId: job.id,
+          nodeId: node.id,
+          workload: job.workload,
+          resources: job.resources,
+          params: job.params,
+          inputDigests: job.inputDigests,
+          riskTier: job.riskTier,
+          nonce: randomBytes(32).toString("hex"),
+          issuedAt: issuedAt.toISOString(),
+          expiresAt: new Date(issuedAt.getTime() + body.data.ttlSeconds * 1_000).toISOString(),
+        };
+        const offer: SignedJobOffer = {
+          id: offerId,
+          manifest,
+          signature: offerSigner.sign(manifest),
+          signatureAlgorithm: "Ed25519",
+          keyId: offerSigner.keyId,
+          approvedAt: null,
+          claimedAt: null,
+          leaseUntil: null,
+        };
 
-      const result = await store.createOffer(offer);
-      if (!result.ok) {
-        return reply.code(failureStatus(result.reason)).send({ error: result.reason });
-      }
-      return reply.code(201).send({ offer: result.value });
-    });
+        const result = await store.createOffer(offer);
+        if (!result.ok) {
+          return reply.code(failureStatus(result.reason)).send({ error: result.reason });
+        }
+        return reply.code(201).send({ offer: result.value });
+      },
+    );
 
-    app.get("/v1/nodes/:nodeId/offers", async (request, reply) => {
-      const params = z.object({ nodeId: z.string().uuid() }).safeParse(request.params);
-      if (!params.success) return reply.code(400).send({ error: "INVALID_NODE_ID" });
-      if (!(await authenticateNode(params.data.nodeId, request.headers.authorization))) {
-        return reply.code(401).send({ error: "INVALID_AGENT_CREDENTIAL" });
-      }
+    app.get(
+      "/v1/nodes/:nodeId/offers",
+      { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const params = z.object({ nodeId: z.string().uuid() }).safeParse(request.params);
+        if (!params.success) return reply.code(400).send({ error: "INVALID_NODE_ID" });
+        if (!(await authenticateNode(params.data.nodeId, request.headers.authorization))) {
+          return reply.code(401).send({ error: "INVALID_AGENT_CREDENTIAL" });
+        }
 
-      const offers = await store.listPendingOffers(params.data.nodeId, now().toISOString());
-      return { offers };
-    });
+        const offers = await store.listPendingOffers(params.data.nodeId, now().toISOString());
+        return { offers };
+      },
+    );
 
-    app.post("/v1/nodes/:nodeId/offers/:offerId/approve", async (request, reply) => {
-      const params = z
-        .object({ nodeId: z.string().uuid(), offerId: z.string().uuid() })
-        .safeParse(request.params);
-      if (!params.success) return reply.code(400).send({ error: "INVALID_OFFER_ID" });
-      if (!(await authenticateNode(params.data.nodeId, request.headers.authorization))) {
-        return reply.code(401).send({ error: "INVALID_AGENT_CREDENTIAL" });
-      }
+    app.post(
+      "/v1/nodes/:nodeId/offers/:offerId/approve",
+      { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const params = z
+          .object({ nodeId: z.string().uuid(), offerId: z.string().uuid() })
+          .safeParse(request.params);
+        if (!params.success) return reply.code(400).send({ error: "INVALID_OFFER_ID" });
+        if (!(await authenticateNode(params.data.nodeId, request.headers.authorization))) {
+          return reply.code(401).send({ error: "INVALID_AGENT_CREDENTIAL" });
+        }
 
-      const result = await store.approveOffer(
-        params.data.offerId,
-        params.data.nodeId,
-        now().toISOString(),
-      );
-      if (!result.ok) {
-        return reply.code(failureStatus(result.reason)).send({ error: result.reason });
-      }
-      return { offer: result.value };
-    });
+        const result = await store.approveOffer(
+          params.data.offerId,
+          params.data.nodeId,
+          now().toISOString(),
+        );
+        if (!result.ok) {
+          return reply.code(failureStatus(result.reason)).send({ error: result.reason });
+        }
+        return { offer: result.value };
+      },
+    );
 
-    app.post("/v1/nodes/:nodeId/offers/:offerId/claim", async (request, reply) => {
-      const params = z
-        .object({ nodeId: z.string().uuid(), offerId: z.string().uuid() })
-        .safeParse(request.params);
-      const body = offerClaimSchema.safeParse(request.body);
-      if (!params.success || !body.success) {
-        return reply.code(400).send({ error: "INVALID_CLAIM" });
-      }
-      if (!(await authenticateNode(params.data.nodeId, request.headers.authorization))) {
-        return reply.code(401).send({ error: "INVALID_AGENT_CREDENTIAL" });
-      }
+    app.post(
+      "/v1/nodes/:nodeId/offers/:offerId/claim",
+      { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const params = z
+          .object({ nodeId: z.string().uuid(), offerId: z.string().uuid() })
+          .safeParse(request.params);
+        const body = offerClaimSchema.safeParse(request.body);
+        if (!params.success || !body.success) {
+          return reply.code(400).send({ error: "INVALID_CLAIM" });
+        }
+        if (!(await authenticateNode(params.data.nodeId, request.headers.authorization))) {
+          return reply.code(401).send({ error: "INVALID_AGENT_CREDENTIAL" });
+        }
 
-      const claimedAt = now();
-      const result = await store.claimOffer(
-        params.data.offerId,
-        params.data.nodeId,
-        body.data.nonce,
-        claimedAt.toISOString(),
-        new Date(claimedAt.getTime() + body.data.leaseSeconds * 1_000).toISOString(),
-      );
-      if (!result.ok) {
-        return reply.code(failureStatus(result.reason)).send({ error: result.reason });
-      }
-      return { offer: result.value };
-    });
+        const claimedAt = now();
+        const result = await store.claimOffer(
+          params.data.offerId,
+          params.data.nodeId,
+          body.data.nonce,
+          claimedAt.toISOString(),
+          new Date(claimedAt.getTime() + body.data.leaseSeconds * 1_000).toISOString(),
+        );
+        if (!result.ok) {
+          return reply.code(failureStatus(result.reason)).send({ error: result.reason });
+        }
+        return { offer: result.value };
+      },
+    );
   });
 
   return app;

@@ -32,7 +32,7 @@ export const signedJobOfferSchema = z.object({
 
 export const offerCreationSchema = z.object({
   nodeId: z.string().uuid(),
-  ttlSeconds: z.number().int().min(30).max(900).default(120),
+  ttlSeconds: z.number().int().min(30).max(900).default(60),
 });
 
 export const offerClaimSchema = z.object({
