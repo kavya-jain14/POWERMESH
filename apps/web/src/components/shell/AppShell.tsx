@@ -52,6 +52,12 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
   const nav = (
     <nav aria-label="Main">
       <ul role="list" className={styles.navList}>
+        <li>
+          <Link href="/" className={styles.navLink}>
+            <Icon name="node" />
+            Landing
+          </Link>
+        </li>
         {NAV[role].map((item) => {
           const active = isActive(item, pathname);
           return (
@@ -91,7 +97,7 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
       </a>
 
       <header className={styles.topbar}>
-        <Link href={ROLE_HOME[role]} className={styles.brand} aria-label="PowerMesh home">
+        <Link href="/" className={styles.brand} aria-label="PowerMesh landing page">
           <Logo />
         </Link>
         <div className={styles.desktopNav}>{nav}</div>
