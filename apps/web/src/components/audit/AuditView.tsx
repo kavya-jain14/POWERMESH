@@ -1,15 +1,27 @@
 "use client";
 
+import {
+  Banner,
+  Button,
+  EmptyState,
+  Field,
+  Mono,
+  Panel,
+  Select,
+  Skeleton,
+  Table,
+  TextInput,
+  tableStyles,
+} from "@powermesh/ui";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Banner, Button, EmptyState, Field, Mono, Panel, Select, Skeleton, Table, TextInput, tableStyles } from "@powermesh/ui";
-import type { AuditEvent, AuditEventType, Role } from "@/contracts-draft/types";
-import { formatDateTime, formatTime } from "@/contracts-draft/format";
-import { ApiError, api, type AuditQuery } from "@/lib/api";
-import { useResource } from "@/lib/hooks";
-import { ROLE_LABEL, describeJob } from "@/lib/copy";
 import { JobStateBadge, RiskExplanationView } from "@/components/common/JobBits";
+import { formatDateTime, formatTime } from "@/contracts-draft/format";
+import type { AuditEvent, AuditEventType, Role } from "@/contracts-draft/types";
+import { ApiError, type AuditQuery, api } from "@/lib/api";
+import { describeJob, ROLE_LABEL } from "@/lib/copy";
+import { useResource } from "@/lib/hooks";
 import styles from "./Audit.module.css";
 
 /** Q17: event types from packages/contracts. */
@@ -45,7 +57,8 @@ async function saveExport(filters: AuditQuery, format: "csv" | "json") {
 }
 
 function actorText(a: AuditEvent["actor"]): string {
-  const role = a.role === "system" ? "Coordinator" : a.role === "agent" ? "Agent" : ROLE_LABEL[a.role];
+  const role =
+    a.role === "system" ? "Coordinator" : a.role === "agent" ? "Agent" : ROLE_LABEL[a.role];
   return a.label === role ? role : `${a.label}`;
 }
 
@@ -59,21 +72,36 @@ function useDebounced<T>(value: T, ms: number): T {
   return debounced;
 }
 
-export function AuditView({ role, initial }: { role: Role; initial: { jobId?: string; nodeId?: string } }) {
+export function AuditView({
+  role,
+  initial,
+}: {
+  role: Role;
+  initial: { jobId?: string; nodeId?: string };
+}) {
   const router = useRouter();
   const [type, setType] = useState("");
   const [query, setQuery] = useState("");
   const q = useDebounced(query.trim(), 300);
-  const filters: AuditQuery = { jobId: initial.jobId, nodeId: initial.nodeId, type: type || undefined, q: q || undefined };
+  const filters: AuditQuery = {
+    jobId: initial.jobId,
+    nodeId: initial.nodeId,
+    type: type || undefined,
+    q: q || undefined,
+  };
   const filterKey = JSON.stringify(filters);
   const events = useResource(() => api.audit(filters), { intervalMs: 5000, key: filterKey });
-  const job = useResource(() => (initial.jobId ? api.getJob(initial.jobId) : Promise.resolve(undefined)), { key: initial.jobId });
+  const job = useResource(
+    () => (initial.jobId ? api.getJob(initial.jobId) : Promise.resolve(undefined)),
+    { key: initial.jobId },
+  );
 
   // Q15: the first page polls; older pages load on demand with the opaque cursor.
   const [older, setOlder] = useState<AuditEvent[]>([]);
   const [cursor, setCursor] = useState<string | null | undefined>(undefined);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<string>();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: filterKey is the trigger — older pages reset whenever the filters change.
   useEffect(() => {
     setOlder([]);
     setCursor(undefined);
@@ -128,7 +156,9 @@ export function AuditView({ role, initial }: { role: Role; initial: { jobId?: st
         >
           <div className={styles.explain}>
             <div>
-              <p className={styles.outcome}>{describeJob(job.data, role === "provider" ? "provider" : "requester")}</p>
+              <p className={styles.outcome}>
+                {describeJob(job.data, role === "provider" ? "provider" : "requester")}
+              </p>
               <p className="pm-small pm-muted">Submitted {formatDateTime(job.data.createdAt)}.</p>
               <p className="pm-small">
                 <Link href={`/jobs/${job.data.id}`}>Open the live view</Link>
@@ -142,7 +172,12 @@ export function AuditView({ role, initial }: { role: Role; initial: { jobId?: st
       <Panel padded>
         <div className={styles.filters}>
           <Field label="Search">
-            <TextInput type="search" placeholder="Summary, reason code, job, event or correlation id" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <TextInput
+              type="search"
+              placeholder="Summary, reason code, job, event or correlation id"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
           </Field>
           <Field label="Event type">
             <Select value={type} onChange={(e) => setType(e.target.value)}>
@@ -161,10 +196,22 @@ export function AuditView({ role, initial }: { role: Role; initial: { jobId?: st
               </Button>
             ) : null}
             {/* Q17: exports are built on the server — complete, authorised and redacted, not just this page. */}
-            <Button variant="secondary" icon="download" loading={exporting === "csv"} disabled={exporting !== null} onClick={() => void doExport("csv")}>
+            <Button
+              variant="secondary"
+              icon="download"
+              loading={exporting === "csv"}
+              disabled={exporting !== null}
+              onClick={() => void doExport("csv")}
+            >
               Export CSV
             </Button>
-            <Button variant="secondary" icon="download" loading={exporting === "json"} disabled={exporting !== null} onClick={() => void doExport("json")}>
+            <Button
+              variant="secondary"
+              icon="download"
+              loading={exporting === "json"}
+              disabled={exporting !== null}
+              onClick={() => void doExport("json")}
+            >
               Export JSON
             </Button>
           </div>
@@ -183,7 +230,12 @@ export function AuditView({ role, initial }: { role: Role; initial: { jobId?: st
       ) : null}
 
       {events.error ? (
-        <Banner tone={events.data ? "warning" : "danger"} title={events.data ? "Showing the last events we loaded" : "We couldn't load the audit log"}>
+        <Banner
+          tone={events.data ? "warning" : "danger"}
+          title={
+            events.data ? "Showing the last events we loaded" : "We couldn't load the audit log"
+          }
+        >
           {events.error.message}
         </Banner>
       ) : null}
@@ -192,7 +244,9 @@ export function AuditView({ role, initial }: { role: Role; initial: { jobId?: st
         <Skeleton height={240} />
       ) : rows.length === 0 ? (
         <EmptyState icon="file" title="No events match these filters">
-          {q || type ? "Try a broader search or a different event type." : "Events appear here as jobs are submitted, approved, run and stopped."}
+          {q || type
+            ? "Try a broader search or a different event type."
+            : "Events appear here as jobs are submitted, approved, run and stopped."}
         </EmptyState>
       ) : (
         <Table caption={`Audit events (${rows.length}${nextCursor ? "+" : ""})`}>
@@ -216,11 +270,17 @@ export function AuditView({ role, initial }: { role: Role; initial: { jobId?: st
                 <td>{actorText(e.actor)}</td>
                 <td>
                   {e.jobId ? (
-                    <Link href={`/audit?jobId=${encodeURIComponent(e.jobId)}`} className={tableStyles.rowLink}>
+                    <Link
+                      href={`/audit?jobId=${encodeURIComponent(e.jobId)}`}
+                      className={tableStyles.rowLink}
+                    >
                       <Mono>{e.jobId}</Mono>
                     </Link>
                   ) : e.type === "JOB_REJECTED" ? (
-                    <span className="pm-muted pm-small" title="Blocked before it became a job, so there's no job id. Its reference is the event id.">
+                    <span
+                      className="pm-muted pm-small"
+                      title="Blocked before it became a job, so there's no job id. Its reference is the event id."
+                    >
                       No job · <Mono muted>{e.id}</Mono>
                     </span>
                   ) : (
@@ -242,7 +302,12 @@ export function AuditView({ role, initial }: { role: Role; initial: { jobId?: st
 
       {nextCursor ? (
         <div className="pm-stack-sm" style={{ justifyItems: "start" }}>
-          <Button variant="secondary" icon="chevronDown" loading={loadingMore} onClick={() => void loadMore()}>
+          <Button
+            variant="secondary"
+            icon="chevronDown"
+            loading={loadingMore}
+            onClick={() => void loadMore()}
+          >
             Load older events
           </Button>
           {moreError ? (

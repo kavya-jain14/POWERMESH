@@ -1,12 +1,22 @@
+import { AnnouncerProvider } from "@powermesh/ui";
 import type { Metadata, Viewport } from "next";
 import { Chakra_Petch, IBM_Plex_Mono } from "next/font/google";
-import { AnnouncerProvider } from "@powermesh/ui";
 import { AppShell } from "@/components/shell/AppShell";
 import { getRole } from "@/lib/session";
 import "./globals.css";
 
-const sans = Chakra_Petch({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--pm-font-sans-loaded", display: "swap" });
-const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--pm-font-mono-loaded", display: "swap" });
+const sans = Chakra_Petch({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--pm-font-sans-loaded",
+  display: "swap",
+});
+const mono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--pm-font-mono-loaded",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: { default: "PowerMesh", template: "%s · PowerMesh" },

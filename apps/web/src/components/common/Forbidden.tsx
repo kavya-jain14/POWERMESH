@@ -1,5 +1,5 @@
+import { buttonClassName, EmptyState } from "@powermesh/ui";
 import Link from "next/link";
-import { EmptyState, buttonClassName } from "@powermesh/ui";
 import type { Role } from "@/contracts-draft/types";
 import { ROLE_LABEL } from "@/lib/copy";
 
@@ -15,7 +15,8 @@ export function Forbidden({ role, needs }: { role: Role; needs: Role[] }) {
         </Link>
       }
     >
-      This screen is for {needs.map((r) => ROLE_LABEL[r].toLowerCase()).join(" and ")}s. You're viewing PowerMesh as a {ROLE_LABEL[role].toLowerCase()}.
+      This screen is for {needs.map((r) => ROLE_LABEL[r].toLowerCase()).join(" and ")}s. You're
+      viewing PowerMesh as a {ROLE_LABEL[role].toLowerCase()}.
     </EmptyState>
   );
 }

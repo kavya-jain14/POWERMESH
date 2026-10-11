@@ -6,8 +6,17 @@
  * Q7: policy emits stable codes; labels come from RISK_FACT_COPY, keyed by code, which moves to
  * packages/contracts. Wording can change here without touching policy logic.
  */
-import { RISK_ORDER, type NetworkMode, type RiskExplanation, type RiskFact, type RiskFactCode, type RiskTier, type WorkloadDefinition } from "./types";
+
 import { shortHash } from "./format";
+import {
+  type NetworkMode,
+  RISK_ORDER,
+  type RiskExplanation,
+  type RiskFact,
+  type RiskFactCode,
+  type RiskTier,
+  type WorkloadDefinition,
+} from "./types";
 
 /** User-facing copy (Gargi). Keep sentences short; the effect is shown separately as icon + text. */
 export const RISK_FACT_COPY: Record<RiskFactCode, string> = {
@@ -26,8 +35,10 @@ export const RISK_FACT_COPY: Record<RiskFactCode, string> = {
   HOST_FILESYSTEM_ACCESS: "Asks for files on the provider's device, which is never allowed.",
   DOCKER_SOCKET_ACCESS: "Asks for the Docker socket, which is never allowed.",
   RAW_DEVICE_ACCESS: "Asks for raw device access, which is never allowed.",
-  RESOURCE_ENVELOPE_ELEVATED: "Asks for more CPU, memory or time than the workload's standard limits.",
-  ROUTE_DEDICATED_ONLY: "HIGH risk jobs only run on dedicated verified nodes — never personal devices.",
+  RESOURCE_ENVELOPE_ELEVATED:
+    "Asks for more CPU, memory or time than the workload's standard limits.",
+  ROUTE_DEDICATED_ONLY:
+    "HIGH risk jobs only run on dedicated verified nodes — never personal devices.",
 };
 
 function fact(code: RiskFactCode, effect: RiskFact["effect"], detail?: string): RiskFact {
@@ -40,13 +51,23 @@ function maxTier(a: RiskTier, b: RiskTier): RiskTier {
   return RISK_ORDER.indexOf(a) >= RISK_ORDER.indexOf(b) ? a : b;
 }
 
-export function classifyRisk(workload: WorkloadDefinition, networkMode: NetworkMode, now = new Date()): RiskExplanation {
+export function classifyRisk(
+  workload: WorkloadDefinition,
+  networkMode: NetworkMode,
+  now = new Date(),
+): RiskExplanation {
   let tier: RiskTier = "LOW";
   const facts: RiskFact[] = [];
 
   // 1. Signed and digest-pinned?
   if (workload.signatureVerified && workload.imageDigest.startsWith("sha256:")) {
-    facts.push(fact("SIGNED_DIGEST_PINNED", "lowers", `Signed by ${workload.publisher} · ${shortHash(workload.imageDigest)}`));
+    facts.push(
+      fact(
+        "SIGNED_DIGEST_PINNED",
+        "lowers",
+        `Signed by ${workload.publisher} · ${shortHash(workload.imageDigest)}`,
+      ),
+    );
   } else {
     tier = maxTier(tier, networkMode === "OPEN_WEB" ? "BLOCKED" : "HIGH");
     facts.push(fact("UNSIGNED_OR_UNPINNED", "raises"));
@@ -79,11 +100,16 @@ export function classifyRisk(workload: WorkloadDefinition, networkMode: NetworkM
   // 4. Secrets or device access.
   if (workload.needsSecrets || workload.needsDeviceAccess) {
     tier = maxTier(tier, "HIGH");
-    facts.push(fact("SECRETS_OR_DEVICES", "raises", workload.needsSecrets ? "Secrets" : "Device access"));
+    facts.push(
+      fact("SECRETS_OR_DEVICES", "raises", workload.needsSecrets ? "Secrets" : "Device access"),
+    );
   }
 
   // 5. Bounded schemas.
-  const bounded = workload.input.maxFiles > 0 && workload.input.maxTotalBytes > 0 && workload.output.contentTypes.length > 0;
+  const bounded =
+    workload.input.maxFiles > 0 &&
+    workload.input.maxTotalBytes > 0 &&
+    workload.output.contentTypes.length > 0;
   facts.push(bounded ? fact("BOUNDED_SCHEMAS", "lowers") : fact("UNBOUNDED_SCHEMAS", "raises"));
   if (!bounded) tier = maxTier(tier, "HIGH");
 

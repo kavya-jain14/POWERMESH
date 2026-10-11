@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
-import { Icon } from "./Icon";
+import { type ReactNode, useEffect, useId, useRef } from "react";
 import { cx } from "../cx";
 import styles from "./Dialog.module.css";
+import { Icon } from "./Icon";
 
 export interface DialogProps {
   open: boolean;
@@ -68,6 +68,7 @@ export function Dialog({
   }, []);
 
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the click handler only closes on a backdrop click; keyboard users close with Esc (onCancel) or the Close button.
     <dialog
       ref={ref}
       className={cx(styles.dialog, styles[variant], className)}

@@ -16,33 +16,33 @@
   color-scheme: dark;
 
   /* ── Neutrals ─────────────────────────────────────────── */
-  --pm-paper: #000000;          /* page background */
-  --pm-surface: #0a0a0a;        /* panels, tables */
+  --pm-paper: #000000; /* page background */
+  --pm-surface: #0a0a0a; /* panels, tables */
   --pm-surface-sunken: #1c1c17; /* wells, code, table header (theme "muted") */
-  --pm-ink: #ffffff;            /* primary text, control outlines */
-  --pm-ink-2: #c9c9c4;          /* secondary text */
-  --pm-ink-3: #8f8f88;          /* muted text, captions (AA on every surface) */
-  --pm-line: #262626;           /* hairline borders (theme "border" #222, lifted for panels) */
-  --pm-line-strong: #55554f;    /* emphasised containers */
+  --pm-ink: #ffffff; /* primary text, control outlines */
+  --pm-ink-2: #c9c9c4; /* secondary text */
+  --pm-ink-3: #8f8f88; /* muted text, captions (AA on every surface) */
+  --pm-line: #262626; /* hairline borders (theme "border" #222, lifted for panels) */
+  --pm-line-strong: #55554f; /* emphasised containers */
 
   /* ── Accent ───────────────────────────────────────────── */
-  --pm-accent: #d6544b;         /* primary action fill + accent text */
+  --pm-accent: #d6544b; /* primary action fill + accent text */
   --pm-accent-hover: #e0645a;
   --pm-accent-press: #c94d44;
-  --pm-accent-tint: #2a110f;    /* selected / active background (ink text) */
-  --pm-on-accent: #000000;      /* text and icons on an accent fill */
-  --pm-accent-text: #e3695f;    /* accent as TEXT on dark wells (AA on surface-sunken) */
+  --pm-accent-tint: #2a110f; /* selected / active background (ink text) */
+  --pm-on-accent: #000000; /* text and icons on an accent fill */
+  --pm-accent-text: #e3695f; /* accent as TEXT on dark wells (AA on surface-sunken) */
 
   /* ── Status (text on tint backgrounds) ───────────────── */
   --pm-success: #4ade80;
   --pm-success-tint: #0e2a18;
-  --pm-info: #6ea4f5;           /* theme chart-3, lightened for AA */
+  --pm-info: #6ea4f5; /* theme chart-3, lightened for AA */
   --pm-info-tint: #0c1a33;
-  --pm-warning: #e68933;        /* theme chart-1 */
+  --pm-warning: #e68933; /* theme chart-1 */
   --pm-warning-tint: #2b1a07;
-  --pm-danger: #ff5a67;         /* danger TEXT */
+  --pm-danger: #ff5a67; /* danger TEXT */
   --pm-danger-tint: #2e0a0e;
-  --pm-danger-fill: #ea1330;    /* danger FILL (theme destructive) — white text */
+  --pm-danger-fill: #ea1330; /* danger FILL (theme destructive) — white text */
   --pm-danger-fill-hover: #c40f28;
   --pm-on-danger: #ffffff;
   --pm-neutral: #b5b5ae;
@@ -54,7 +54,7 @@
   --pm-risk-medium-fg: #000000;
   --pm-risk-medium-bg: #d4ce21; /* theme chart-2 */
   --pm-risk-high-fg: #000000;
-  --pm-risk-high-bg: #e68933;   /* theme chart-1 */
+  --pm-risk-high-bg: #e68933; /* theme chart-1 */
   --pm-risk-blocked-fg: #ffffff;
   --pm-risk-blocked-bg: #ea1330;
 
@@ -65,16 +65,19 @@
   --pm-focus-ring: 0 0 0 2px var(--pm-surface), 0 0 0 4px var(--pm-ink), 0 0 0 7px var(--pm-accent);
 
   /* ── Typography ───────────────────────────────────────── */
-  --pm-font-sans: var(--pm-font-sans-loaded, "Chakra Petch"), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --pm-font-mono: var(--pm-font-mono-loaded, "IBM Plex Mono"), ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --pm-font-sans:
+    var(--pm-font-sans-loaded, "Chakra Petch"), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --pm-font-mono:
+    var(--pm-font-mono-loaded, "IBM Plex Mono"), ui-monospace, "SFMono-Regular", Consolas, monospace;
 
-  --pm-text-xs: 0.75rem;    /* 12 — captions, table meta */
-  --pm-text-sm: 0.8125rem;  /* 13 — table cells, badges */
-  --pm-text-md: 0.875rem;   /* 14 — body (compact console) */
-  --pm-text-lg: 1rem;       /* 16 — lead, inputs */
-  --pm-text-xl: 1.25rem;    /* 20 — section titles */
-  --pm-text-2xl: 1.5rem;    /* 24 — page titles */
-  --pm-text-3xl: 2rem;      /* 32 — display numbers */
+  --pm-text-xs: 0.75rem; /* 12 — captions, table meta */
+  --pm-text-sm: 0.8125rem; /* 13 — table cells, badges */
+  --pm-text-md: 0.875rem; /* 14 — body (compact console) */
+  --pm-text-lg: 1rem; /* 16 — lead, inputs */
+  --pm-text-xl: 1.25rem; /* 20 — section titles */
+  --pm-text-2xl: 1.5rem; /* 24 — page titles */
+  --pm-text-3xl: 2rem; /* 32 — display numbers */
 
   --pm-leading-tight: 1.2;
   --pm-leading-normal: 1.5;

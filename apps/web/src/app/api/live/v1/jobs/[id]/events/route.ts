@@ -1,6 +1,12 @@
 import { jobStates } from "@powermesh/contracts";
-import { STREAM_TIMING, type JobEvent } from "@/contracts-draft/types";
-import { BridgeError, COORDINATOR_TERMINAL, type CoordinatorJob, errorResponse, fetchJob } from "@/server/coordinator";
+import { type JobEvent, STREAM_TIMING } from "@/contracts-draft/types";
+import {
+  BridgeError,
+  COORDINATOR_TERMINAL,
+  type CoordinatorJob,
+  errorResponse,
+  fetchJob,
+} from "@/server/coordinator";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -27,7 +33,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   }
 
   const url = new URL(req.url);
-  const resumeAfter = Number(req.headers.get("last-event-id") ?? url.searchParams.get("after") ?? 0) || 0;
+  const resumeAfter =
+    Number(req.headers.get("last-event-id") ?? url.searchParams.get("after") ?? 0) || 0;
   const encoder = new TextEncoder();
   const seqOf = (state: CoordinatorJob["state"]) => jobStates.indexOf(state) + 1;
 
@@ -96,7 +103,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
           });
       }, POLL_MS);
       heartbeat = setInterval(() => {
-        write(`event: heartbeat\ndata: ${JSON.stringify({ at: new Date().toISOString(), state: lastState })}\n\n`);
+        write(
+          `event: heartbeat\ndata: ${JSON.stringify({ at: new Date().toISOString(), state: lastState })}\n\n`,
+        );
       }, HEARTBEAT_MS);
       req.signal.addEventListener("abort", cleanup);
     },

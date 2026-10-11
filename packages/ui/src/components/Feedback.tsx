@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { Icon, type IconName } from "./Icon";
-import type { Tone } from "./Badge";
 import { cx } from "../cx";
+import type { Tone } from "./Badge";
 import styles from "./Feedback.module.css";
+import { Icon, type IconName } from "./Icon";
 
 const toneIcon: Record<Tone, IconName> = {
   neutral: "info",
@@ -58,6 +58,16 @@ export function EmptyState({ icon = "list", title, children, action }: EmptyStat
 }
 
 /** Loading placeholder block. Wrap groups in an element with aria-busy="true" and a visible/hidden label. */
-export function Skeleton({ width = "100%", height = 14, className }: { width?: number | string; height?: number | string; className?: string }) {
-  return <span className={cx(styles.skeleton, className)} style={{ width, height }} aria-hidden="true" />;
+export function Skeleton({
+  width = "100%",
+  height = 14,
+  className,
+}: {
+  width?: number | string;
+  height?: number | string;
+  className?: string;
+}) {
+  return (
+    <span className={cx(styles.skeleton, className)} style={{ width, height }} aria-hidden="true" />
+  );
 }

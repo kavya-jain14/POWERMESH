@@ -47,7 +47,13 @@ export function Panel({
 }
 
 /** Label/value pairs. Use for job facts, node capability, approval details. */
-export function KeyValue({ items, columns = 1 }: { items: Array<{ label: ReactNode; value: ReactNode; key?: string }>; columns?: 1 | 2 | 3 }) {
+export function KeyValue({
+  items,
+  columns = 1,
+}: {
+  items: Array<{ label: ReactNode; value: ReactNode; key?: string }>;
+  columns?: 1 | 2 | 3;
+}) {
   return (
     <dl className={cx(styles.kv, styles[`kvCols${columns}`])}>
       {items.map((item, i) => (

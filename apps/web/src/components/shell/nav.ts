@@ -19,7 +19,13 @@ export const NAV: Record<Role, NavItem[]> = {
     { href: "/audit", label: "Policy & Audit", icon: "file" },
   ],
   provider: [
-    { href: "/provider", label: "Provider Console", icon: "node", prefix: true, exclude: ["/provider/policy"] },
+    {
+      href: "/provider",
+      label: "Provider Console",
+      icon: "node",
+      prefix: true,
+      exclude: ["/provider/policy"],
+    },
     { href: "/provider/policy", label: "Sharing policy", icon: "shield" },
     { href: "/control-room", label: "Control Room", icon: "activity" },
     { href: "/audit", label: "Policy & Audit", icon: "file" },

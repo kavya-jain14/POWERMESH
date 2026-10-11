@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { ControlRoom } from "@/components/control/ControlRoom";
 import { PageHeader } from "@/components/common/PageHeader";
+import { ControlRoom } from "@/components/control/ControlRoom";
 import { getRole } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Control Room" };

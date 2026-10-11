@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { Composer } from "@/components/composer/Composer";
-import { PageHeader } from "@/components/common/PageHeader";
 import { Forbidden } from "@/components/common/Forbidden";
+import { PageHeader } from "@/components/common/PageHeader";
+import { Composer } from "@/components/composer/Composer";
 import { getRole } from "@/lib/session";
 
 export const metadata: Metadata = { title: "New job" };

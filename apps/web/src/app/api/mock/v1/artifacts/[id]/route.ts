@@ -14,9 +14,14 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const url = new URL(req.url);
   try {
     assertOfflineDemoEnabled();
-    const { artifact, file } = resolveArtifact(id, url.searchParams.get("exp"), url.searchParams.get("sig"));
+    const { artifact, file } = resolveArtifact(
+      id,
+      url.searchParams.get("exp"),
+      url.searchParams.get("sig"),
+    );
     const bytes = await readFile(path.join(process.cwd(), "mock-artifacts", path.basename(file)));
-    const download = url.searchParams.get("download") === "1" || !INLINE_TYPES.has(artifact.contentType);
+    const download =
+      url.searchParams.get("download") === "1" || !INLINE_TYPES.has(artifact.contentType);
     const safeName = artifact.name.replace(/[^\w.-]/g, "_");
     return new Response(new Uint8Array(bytes), {
       headers: {

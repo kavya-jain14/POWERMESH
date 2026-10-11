@@ -5,7 +5,11 @@ import { getRole } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Policy & Audit" };
 
-export default async function AuditPage({ searchParams }: { searchParams: Promise<{ jobId?: string; nodeId?: string }> }) {
+export default async function AuditPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ jobId?: string; nodeId?: string }>;
+}) {
   const role = await getRole();
   const { jobId, nodeId } = await searchParams;
   return (

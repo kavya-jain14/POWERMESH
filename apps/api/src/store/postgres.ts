@@ -529,6 +529,23 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
         heartbeat.status,
       ],
     );
+    if (result.rows[0]) {
+      // Telemetry history (TimescaleDB hypertable on Tiger Cloud). Best effort: never blocks or fails a heartbeat.
+      // node_ref is a one-way digest, so the history never stores raw node identity.
+      void this.pool
+        .query(
+          `INSERT INTO node_heartbeats (time, node_ref, available_cpu, available_memory_mb, active_jobs, status)
+           VALUES (NOW(), encode(sha256(convert_to($1::text, 'UTF8')), 'hex'), $2, $3, $4, $5)`,
+          [
+            id,
+            heartbeat.availableCpu,
+            heartbeat.availableMemoryMb,
+            heartbeat.activeJobs,
+            heartbeat.status,
+          ],
+        )
+        .catch(() => undefined);
+    }
     return result.rows[0] ? mapNode(result.rows[0]) : null;
   }
 
