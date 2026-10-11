@@ -1,7 +1,5 @@
 "use client";
 
-import { useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import {
   Banner,
   Button,
@@ -16,13 +14,27 @@ import {
   TextInput,
   useAnnouncer,
 } from "@powermesh/ui";
-import { paramSpecs, type InputFileMeta, type NetworkMode, type RiskBlockedDetails, type RiskExplanation, type WorkloadDefinition } from "@/contracts-draft/types";
-import { classifyRisk } from "@/contracts-draft/risk";
-import { contentTypeLabel, formatBytes, formatDuration, formatMaybeBytes } from "@/contracts-draft/format";
-import { ApiError, IS_LIVE, USES_SIMULATOR, api } from "@/lib/api";
-import { useResource } from "@/lib/hooks";
-import { NETWORK_COPY } from "@/lib/copy";
+import { useRouter } from "next/navigation";
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { RiskExplanationView } from "@/components/common/JobBits";
+import {
+  contentTypeLabel,
+  formatBytes,
+  formatDuration,
+  formatMaybeBytes,
+} from "@/contracts-draft/format";
+import { classifyRisk } from "@/contracts-draft/risk";
+import {
+  type InputFileMeta,
+  type NetworkMode,
+  paramSpecs,
+  type RiskBlockedDetails,
+  type RiskExplanation,
+  type WorkloadDefinition,
+} from "@/contracts-draft/types";
+import { ApiError, api, IS_LIVE, USES_SIMULATOR } from "@/lib/api";
+import { NETWORK_COPY } from "@/lib/copy";
+import { useResource } from "@/lib/hooks";
 import styles from "./Composer.module.css";
 
 const SAMPLE_SET = {
@@ -48,14 +60,28 @@ export function Composer() {
   const [params, setParams] = useState<Record<string, string>>({});
   const [network, setNetwork] = useState<NetworkMode>("OFFLINE");
   const [serverErrors, setServerErrors] = useState<Errors>({});
-  const [submitError, setSubmitError] = useState<{ title: string; message: string; correlationId?: string }>();
+  const [submitError, setSubmitError] = useState<{
+    title: string;
+    message: string;
+    correlationId?: string;
+  }>();
   /** Q6: the coordinator's own decision when it blocks a submission (no job is created). */
-  const [serverBlock, setServerBlock] = useState<{ risk?: RiskExplanation; correlationId?: string; auditEventId?: string }>();
+  const [serverBlock, setServerBlock] = useState<{
+    risk?: RiskExplanation;
+    correlationId?: string;
+    auditEventId?: string;
+  }>();
   const [submitting, setSubmitting] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const summaryRef = useRef<HTMLDivElement>(null);
 
   const workload: WorkloadDefinition | undefined = workloads.data?.find((w) => w.id === workloadId);
+
+  useEffect(() => {
+    if (workloads.data?.length && !workloads.data.some((entry) => entry.id === workloadId)) {
+      setWorkloadId(workloads.data[0].id);
+    }
+  }, [workloads.data, workloadId]);
   // Q28: form controls are rendered from the workload's paramsSchema + x-ui hints.
   const specs = useMemo(() => (workload ? paramSpecs(workload.paramsSchema) : []), [workload]);
 
@@ -65,7 +91,10 @@ export function Composer() {
   };
 
   const files: InputFileMeta[] = useMemo(
-    () => (source === "sample" ? SAMPLE_SET.files.map((f) => ({ name: f.name, contentType: "image/png", bytes: 0 })) : uploads),
+    () =>
+      source === "sample"
+        ? SAMPLE_SET.files.map((f) => ({ name: f.name, contentType: "image/png", bytes: 0 }))
+        : uploads,
     [source, uploads],
   );
 
@@ -79,14 +108,17 @@ export function Composer() {
     const schema = workload.input;
     if (source === "upload") {
       if (uploads.length === 0) e.inputs = "Add at least one image.";
-      else if (uploads.length > schema.maxFiles) e.inputs = `Up to ${schema.maxFiles} images per job — remove ${uploads.length - schema.maxFiles}.`;
+      else if (uploads.length > schema.maxFiles)
+        e.inputs = `Up to ${schema.maxFiles} images per job — remove ${uploads.length - schema.maxFiles}.`;
       else {
         const badType = uploads.find((f) => !schema.contentTypes.includes(f.contentType));
         const tooBig = uploads.find((f) => f.bytes > schema.maxBytesPerFile);
         const total = uploads.reduce((n, f) => n + f.bytes, 0);
         if (badType) e.inputs = `${badType.name} isn't a PNG, JPEG or WebP image.`;
-        else if (tooBig) e.inputs = `${tooBig.name} is ${formatBytes(tooBig.bytes)} — the limit is ${formatBytes(schema.maxBytesPerFile)} per image.`;
-        else if (total > schema.maxTotalBytes) e.inputs = `These images add up to ${formatBytes(total)} — the limit is ${formatBytes(schema.maxTotalBytes)}.`;
+        else if (tooBig)
+          e.inputs = `${tooBig.name} is ${formatBytes(tooBig.bytes)} — the limit is ${formatBytes(schema.maxBytesPerFile)} per image.`;
+        else if (total > schema.maxTotalBytes)
+          e.inputs = `These images add up to ${formatBytes(total)} — the limit is ${formatBytes(schema.maxTotalBytes)}.`;
       }
     }
     for (const spec of specs) {
@@ -95,22 +127,31 @@ export function Composer() {
       const n = Number(raw);
       const offStep = spec.step ? (n - spec.min) % spec.step !== 0 : false;
       if (raw.trim() === "" || !Number.isInteger(n) || n < spec.min || n > spec.max || offStep) {
-        e[spec.key] = `Enter a whole number from ${spec.min} to ${spec.max}${spec.unit ? ` ${spec.unit}` : ""}${spec.step ? `, in steps of ${spec.step}` : ""}.`;
+        e[spec.key] =
+          `Enter a whole number from ${spec.min} to ${spec.max}${spec.unit ? ` ${spec.unit}` : ""}${spec.step ? `, in steps of ${spec.step}` : ""}.`;
       }
     }
-    if (network === "RESTRICTED" && !workload.allowedNetworkModes.includes("RESTRICTED")) e.network = "This workload only runs offline.";
+    if (network === "RESTRICTED" && !workload.allowedNetworkModes.includes("RESTRICTED"))
+      e.network = "This workload only runs offline.";
     return e;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workload, specs, source, uploads, params, network]);
 
-  const risk = useMemo(() => (workload ? classifyRisk(workload, network) : null), [workload, network]);
+  const risk = useMemo(
+    () => (workload ? classifyRisk(workload, network) : null),
+    [workload, network],
+  );
   const blocked = risk?.tier === "BLOCKED" || risk?.tier === "HIGH";
   const allErrors: Errors = { ...errors, ...serverErrors };
   const errorList = Object.entries(allErrors).filter(([, v]) => v) as Array<[string, string]>;
   const showErrors = attempted || Object.keys(serverErrors).length > 0;
 
   const onUpload = (e: ChangeEvent<HTMLInputElement>) => {
-    const list = Array.from(e.target.files ?? []).map((f) => ({ name: f.name, contentType: f.type || "application/octet-stream", bytes: f.size }));
+    const list = Array.from(e.target.files ?? []).map((f) => ({
+      name: f.name,
+      contentType: f.type || "application/octet-stream",
+      bytes: f.size,
+    }));
     setUploads(list);
     setServerErrors({});
   };
@@ -127,7 +168,8 @@ export function Composer() {
     setSubmitting(true);
     try {
       const typed: Record<string, string | number> = {};
-      for (const spec of specs) typed[spec.key] = spec.type === "int" ? Number(paramValue(spec.key)) : paramValue(spec.key);
+      for (const spec of specs)
+        typed[spec.key] = spec.type === "int" ? Number(paramValue(spec.key)) : paramValue(spec.key);
       const job = await api.submitJob({
         workloadId: workload.id,
         params: typed,
@@ -141,14 +183,22 @@ export function Composer() {
       setSubmitting(false);
       if (err instanceof ApiError && err.code === "RISK_BLOCKED") {
         const details = err.details as Partial<RiskBlockedDetails> | undefined;
-        setServerBlock({ risk: details?.risk, correlationId: err.correlationId, auditEventId: details?.auditEventId });
+        setServerBlock({
+          risk: details?.risk,
+          correlationId: err.correlationId,
+          auditEventId: details?.auditEventId,
+        });
         announce("Blocked by the coordinator's safety policy. Nothing was created.", "assertive");
       } else if (err instanceof ApiError && err.fields && err.code !== "PAYLOAD_TOO_LARGE") {
         setServerErrors(mapFieldKeys(err.fields));
         window.setTimeout(() => summaryRef.current?.focus(), 0);
       } else if (err instanceof ApiError) {
         if (err.fields) setServerErrors(mapFieldKeys(err.fields));
-        setSubmitError({ title: SUBMIT_ERROR_TITLE[err.code] ?? "Not submitted", message: err.message, correlationId: err.correlationId });
+        setSubmitError({
+          title: SUBMIT_ERROR_TITLE[err.code] ?? "Not submitted",
+          message: err.message,
+          correlationId: err.correlationId,
+        });
       } else {
         setSubmitError({ title: "Not submitted", message: "Couldn't submit the job." });
       }
@@ -190,7 +240,9 @@ export function Composer() {
         {showErrors && errorList.length > 0 ? (
           <div ref={summaryRef} tabIndex={-1} className={styles.errorSummary} role="alert">
             <p className={styles.errorSummaryTitle}>
-              <Icon name="alert" /> Fix {errorList.length === 1 ? "this" : `these ${errorList.length} things`} before submitting
+              <Icon name="alert" /> Fix{" "}
+              {errorList.length === 1 ? "this" : `these ${errorList.length} things`} before
+              submitting
             </p>
             <ul>
               {errorList.map(([key, msg]) => (
@@ -202,7 +254,12 @@ export function Composer() {
           </div>
         ) : null}
 
-        <Panel id="section-workload" eyebrow="Step 1" title="Workload" description="Only signed, digest-pinned workloads from the PowerMesh catalogue can run.">
+        <Panel
+          id="section-workload"
+          eyebrow="Step 1"
+          title="Workload"
+          description="Only signed, digest-pinned workloads from the PowerMesh catalogue can run."
+        >
           <ChoiceGroup
             legend={<span className="pm-visually-hidden">Workload</span>}
             name="workload"
@@ -218,19 +275,24 @@ export function Composer() {
               value: w.id,
               label: (
                 <>
-                  {w.name} {w.version !== "—" ? <span className="pm-muted pm-small">v{w.version}</span> : null}
+                  {w.name}{" "}
+                  {w.version !== "—" ? (
+                    <span className="pm-muted pm-small">v{w.version}</span>
+                  ) : null}
                 </>
               ),
               description: w.summary,
               disabled: w.availability.status !== "available",
-              disabledReason: w.availability.status === "unavailable" ? w.availability.reason : undefined,
+              disabledReason:
+                w.availability.status === "unavailable" ? w.availability.reason : undefined,
             }))}
           />
           {workload ? (
             <div className={styles.signed}>
               <Icon name="shield" />
               <span>
-                Signed by {workload.publisher} · <Digest value={workload.imageDigest} label="workload digest" />
+                Signed by {workload.publisher} ·{" "}
+                <Digest value={workload.imageDigest} label="workload digest" />
               </span>
             </div>
           ) : null}
@@ -254,8 +316,16 @@ export function Composer() {
                     setServerErrors({});
                   }}
                   options={[
-                    { value: "sample", label: "Demo sample set", description: "3 abstract images, safe to share. Works without internet." },
-                    { value: "upload", label: "Upload images", description: "Your own PNG, JPEG or WebP files." },
+                    {
+                      value: "sample",
+                      label: "Demo sample set",
+                      description: "3 abstract images, safe to share. Works without internet.",
+                    },
+                    {
+                      value: "upload",
+                      label: "Upload images",
+                      description: "Your own PNG, JPEG or WebP files.",
+                    },
                   ]}
                 />
                 {source === "sample" ? (
@@ -272,15 +342,29 @@ export function Composer() {
                   <div className="pm-stack-sm">
                     <Field
                       label="Choose images"
-                      hint={IS_LIVE ? "Only file names, types and sizes are sent — the coordinator has no upload storage yet, so it receives no input digests for your own files." : USES_SIMULATOR ? "Offline demo: only file names, types and sizes are sent — outputs use the demo images. These checks are early feedback, not a security guarantee — the server validates again." : "Files are uploaded to scoped, short-lived storage and staged read-only for the job."}
+                      hint={
+                        IS_LIVE
+                          ? "Only file names, types and sizes are sent — the coordinator has no upload storage yet, so it receives no input digests for your own files."
+                          : USES_SIMULATOR
+                            ? "Offline demo: only file names, types and sizes are sent — outputs use the demo images. These checks are early feedback, not a security guarantee — the server validates again."
+                            : "Files are uploaded to scoped, short-lived storage and staged read-only for the job."
+                      }
                       error={showErrors ? allErrors.inputs : undefined}
                     >
-                      <input type="file" multiple accept={workload.input.contentTypes.join(",")} onChange={onUpload} className={styles.file} />
+                      <input
+                        type="file"
+                        multiple
+                        accept={workload.input.contentTypes.join(",")}
+                        onChange={onUpload}
+                        className={styles.file}
+                      />
                     </Field>
                     {uploads.length > 0 ? (
                       <ul role="list" className={styles.fileList}>
                         {uploads.map((f) => {
-                          const ok = workload.input.contentTypes.includes(f.contentType) && f.bytes <= workload.input.maxBytesPerFile;
+                          const ok =
+                            workload.input.contentTypes.includes(f.contentType) &&
+                            f.bytes <= workload.input.maxBytesPerFile;
                           return (
                             <li key={f.name} className={ok ? undefined : styles.fileBad}>
                               <Icon name={ok ? "image" : "alert"} />
@@ -292,7 +376,8 @@ export function Composer() {
                           );
                         })}
                         <li className="pm-muted pm-small">
-                          {uploads.length} file{uploads.length === 1 ? "" : "s"} · {formatBytes(totalUpload)} total
+                          {uploads.length} file{uploads.length === 1 ? "" : "s"} ·{" "}
+                          {formatBytes(totalUpload)} total
                         </li>
                       </ul>
                     ) : null}
@@ -302,12 +387,25 @@ export function Composer() {
             </Panel>
 
             {specs.length > 0 ? (
-              <Panel id="section-params" eyebrow="Step 3" title="Parameters" description="Fixed by the workload's schema — nothing else can be passed to it.">
+              <Panel
+                id="section-params"
+                eyebrow="Step 3"
+                title="Parameters"
+                description="Fixed by the workload's schema — nothing else can be passed to it."
+              >
                 <div className={styles.params}>
                   {specs.map((spec) =>
                     spec.type === "enum" ? (
-                      <Field key={spec.key} label={spec.label} hint={spec.hint} error={showErrors ? allErrors[spec.key] : undefined}>
-                        <Select value={paramValue(spec.key)} onChange={(e) => setParams((p) => ({ ...p, [spec.key]: e.target.value }))}>
+                      <Field
+                        key={spec.key}
+                        label={spec.label}
+                        hint={spec.hint}
+                        error={showErrors ? allErrors[spec.key] : undefined}
+                      >
+                        <Select
+                          value={paramValue(spec.key)}
+                          onChange={(e) => setParams((p) => ({ ...p, [spec.key]: e.target.value }))}
+                        >
                           {spec.options.map((o) => (
                             <option key={o.value} value={o.value}>
                               {o.label}
@@ -320,7 +418,11 @@ export function Composer() {
                         key={spec.key}
                         label={`${spec.label}${spec.unit ? ` (${spec.unit})` : ""}`}
                         hint={`${spec.min}–${spec.max}${spec.unit ? ` ${spec.unit}` : ""}. ${spec.hint ?? ""}`}
-                        error={showErrors || paramValue(spec.key) !== String(spec.default) ? allErrors[spec.key] : undefined}
+                        error={
+                          showErrors || paramValue(spec.key) !== String(spec.default)
+                            ? allErrors[spec.key]
+                            : undefined
+                        }
                       >
                         <TextInput
                           type="number"
@@ -345,14 +447,25 @@ export function Composer() {
                       { label: "Disk", value: formatMaybeBytes(workload.limits.diskBytes) },
                       { label: "Time", value: formatDuration(workload.limits.timeoutSeconds) },
                       { label: "Processes", value: workload.limits.pidLimit ?? "Not reported" },
-                      { label: "Isolation", value: workload.minimumIsolation === "docker-rootless" ? "Rootless container or stronger" : workload.minimumIsolation },
+                      {
+                        label: "Isolation",
+                        value:
+                          workload.minimumIsolation === "docker-rootless"
+                            ? "Rootless container or stronger"
+                            : workload.minimumIsolation,
+                      },
                     ]}
                   />
                 </div>
               </Panel>
             ) : null}
 
-            <Panel id="section-network" eyebrow={`Step ${specs.length ? 4 : 3}`} title="Network" description="Offline is the default. The sandbox never needs internet to report progress.">
+            <Panel
+              id="section-network"
+              eyebrow={`Step ${specs.length ? 4 : 3}`}
+              title="Network"
+              description="Offline is the default. The sandbox never needs internet to report progress."
+            >
               <ChoiceGroup<NetworkMode>
                 legend={<span className="pm-visually-hidden">Network mode</span>}
                 name="network"
@@ -367,7 +480,8 @@ export function Composer() {
                   value: mode,
                   label: NETWORK_COPY[mode].label,
                   description: NETWORK_COPY[mode].description,
-                  disabled: mode === "RESTRICTED" && !workload.allowedNetworkModes.includes("RESTRICTED"),
+                  disabled:
+                    mode === "RESTRICTED" && !workload.allowedNetworkModes.includes("RESTRICTED"),
                   disabledReason: "This workload doesn't use the network.",
                 }))}
               />
@@ -386,7 +500,10 @@ export function Composer() {
                     { label: "Workload", value: `${workload.name} v${workload.version}` },
                     {
                       label: "Inputs",
-                      value: source === "sample" ? "Demo sample set · 3 PNG images" : `${uploads.length} image${uploads.length === 1 ? "" : "s"} · ${formatBytes(totalUpload)}`,
+                      value:
+                        source === "sample"
+                          ? "Demo sample set · 3 PNG images"
+                          : `${uploads.length} image${uploads.length === 1 ? "" : "s"} · ${formatBytes(totalUpload)}`,
                     },
                     { label: "Network", value: NETWORK_COPY[network].label },
                   ]}
@@ -404,7 +521,10 @@ export function Composer() {
                         : "Change the choice marked “Blocks” to continue."}
                   </Banner>
                 ) : (
-                  <p className="pm-small pm-muted">The coordinator re-checks policy on submit. A provider must approve before anything runs.</p>
+                  <p className="pm-small pm-muted">
+                    The coordinator re-checks policy on submit. A provider must approve before
+                    anything runs.
+                  </p>
                 )}
               </>
             ) : (
@@ -413,10 +533,22 @@ export function Composer() {
             {serverBlock ? (
               <Banner tone="danger" title="Blocked by the coordinator" role="alert">
                 <div className="pm-stack-sm">
-                  <p>This request is blocked by the current safety policy. No job was created and nothing was offered to a provider.</p>
-                  {serverBlock.risk ? <RiskExplanationView risk={serverBlock.risk} heading="Coordinator's decision" compact /> : null}
+                  <p>
+                    This request is blocked by the current safety policy. No job was created and
+                    nothing was offered to a provider.
+                  </p>
+                  {serverBlock.risk ? (
+                    <RiskExplanationView
+                      risk={serverBlock.risk}
+                      heading="Coordinator's decision"
+                      compact
+                    />
+                  ) : null}
                   <p className="pm-small">
-                    Reference: <span className="pm-mono">{serverBlock.auditEventId ?? serverBlock.correlationId ?? "—"}</span>
+                    Reference:{" "}
+                    <span className="pm-mono">
+                      {serverBlock.auditEventId ?? serverBlock.correlationId ?? "—"}
+                    </span>
                   </p>
                 </div>
               </Banner>
@@ -424,10 +556,19 @@ export function Composer() {
             {submitError ? (
               <Banner tone="danger" title={submitError.title} role="alert">
                 {submitError.message}
-                {submitError.correlationId ? <span className="pm-small pm-mono"> (ref {submitError.correlationId})</span> : null}
+                {submitError.correlationId ? (
+                  <span className="pm-small pm-mono"> (ref {submitError.correlationId})</span>
+                ) : null}
               </Banner>
             ) : null}
-            <Button type="submit" variant="primary" size="lg" icon="play" loading={submitting} disabled={!workload || blocked}>
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              icon="play"
+              loading={submitting}
+              disabled={!workload || blocked}
+            >
               {submitting ? "Submitting…" : "Submit job"}
             </Button>
           </div>
@@ -451,7 +592,15 @@ function mapFieldKeys(fields: Record<string, string>): Errors {
   const mapped: Errors = {};
   for (const [k, v] of Object.entries(fields)) {
     const key =
-      k === "networkMode" ? "network" : k === "workloadId" ? "workload" : k.startsWith("params.") ? k.slice("params.".length) : k.startsWith("inputs.") ? "inputs" : k;
+      k === "networkMode"
+        ? "network"
+        : k === "workloadId"
+          ? "workload"
+          : k.startsWith("params.")
+            ? k.slice("params.".length)
+            : k.startsWith("inputs.")
+              ? "inputs"
+              : k;
     mapped[key] = v;
   }
   return mapped;
