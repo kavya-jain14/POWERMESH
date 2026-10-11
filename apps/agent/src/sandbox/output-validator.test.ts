@@ -13,6 +13,11 @@ describe("sandbox output validation", () => {
     });
   });
 
+  it("accepts a WebP signature", () => {
+    const data = Buffer.from("RIFF\u0000\u0000\u0000\u0000WEBP");
+    expect(validateOutput("result.webp", "image/webp", data, 100).contentType).toBe("image/webp");
+  });
+
   it("rejects traversal, active content, oversized files, and spoofed magic bytes", () => {
     expect(() => validateOutput("../secret", "text/plain", Buffer.from("x"), 10)).toThrow(
       /filename/,

@@ -20,12 +20,40 @@ interface StoredOffer {
   nonceConsumedAt: string | null;
 }
 
+const capacityReservingStates = new Set([
+  "OFFERED",
+  "APPROVED",
+  "CLAIMED",
+  "RUNNING",
+  "VALIDATING",
+]);
+
 export class MemoryCoordinatorStore implements CoordinatorStore {
   readonly kind = "memory" as const;
   private readonly jobs = new Map<string, JobRecord>();
   private readonly nodes = new Map<string, StoredNode>();
   private readonly offers = new Map<string, StoredOffer>();
   private readonly requesters = new Map<string, { record: RequesterRecord; tokenHash: string }>();
+
+  private effectiveProviderCapacity(node: ProviderNodeRecord): ProviderNodeRecord {
+    let reservedCpu = 0;
+    let reservedMemoryMb = 0;
+    let reservedJobs = 0;
+    for (const { record: offer } of this.offers.values()) {
+      if (offer.manifest.nodeId !== node.id) continue;
+      const job = this.jobs.get(offer.manifest.jobId);
+      if (!job || !capacityReservingStates.has(job.state)) continue;
+      reservedCpu += job.resources.cpu;
+      reservedMemoryMb += job.resources.memoryMb;
+      reservedJobs += 1;
+    }
+    return {
+      ...node,
+      availableCpu: Math.max(0, node.availableCpu - reservedCpu),
+      availableMemoryMb: Math.max(0, node.availableMemoryMb - reservedMemoryMb),
+      activeJobs: Math.max(node.activeJobs, reservedJobs),
+    };
+  }
 
   async close(): Promise<void> {}
 
@@ -75,6 +103,14 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
   async findJob(id: string): Promise<JobRecord | null> {
     const job = this.jobs.get(id);
     return job ? structuredClone(job) : null;
+  }
+
+  async listPolicyCheckedJobs(limit: number): Promise<JobRecord[]> {
+    return [...this.jobs.values()]
+      .filter((job) => job.state === "POLICY_CHECKED")
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+      .slice(0, limit)
+      .map((job) => structuredClone(job));
   }
 
   async transitionJob(
@@ -129,6 +165,13 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
     return node ? structuredClone(node) : null;
   }
 
+  async listAvailableProviders(): Promise<ProviderNodeRecord[]> {
+    return [...this.nodes.values()]
+      .map(({ record }) => record)
+      .filter((node) => node.status === "ONLINE")
+      .map((node) => structuredClone(this.effectiveProviderCapacity(node)));
+  }
+
   async heartbeatProvider(
     id: string,
     heartbeat: Parameters<CoordinatorStore["heartbeatProvider"]>[1],
@@ -153,7 +196,7 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
     const node = this.nodes.get(offer.manifest.nodeId)?.record;
     if (!node) return { ok: false, reason: "NODE_NOT_FOUND" };
     if (job.state !== "POLICY_CHECKED") return { ok: false, reason: "INVALID_STATE" };
-    const eligibilityFailure = providerCanRunJob(node, job);
+    const eligibilityFailure = providerCanRunJob(this.effectiveProviderCapacity(node), job);
     if (eligibilityFailure) return { ok: false, reason: eligibilityFailure };
 
     assertJobTransition(job.state, "OFFERED");
@@ -230,5 +273,38 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
     this.offers.set(offerId, { record, nonceConsumedAt: now });
     this.jobs.set(job.id, { ...job, state: "CLAIMED", updatedAt: now });
     return { ok: true, value: structuredClone(record) };
+  }
+
+  async transitionAssignedJob(
+    jobId: string,
+    nodeId: string,
+    nextState: Parameters<CoordinatorStore["transitionAssignedJob"]>[2],
+    _actor: string,
+    _correlationId: string,
+    _safePayload: Record<string, unknown> = {},
+  ): Promise<StoreResult<JobRecord>> {
+    const job = this.jobs.get(jobId);
+    if (!job) return { ok: false, reason: "JOB_NOT_FOUND" };
+    const assignment = [...this.offers.values()].find(
+      ({ record }) => record.manifest.jobId === jobId,
+    );
+    if (!assignment?.record.claimedAt) return { ok: false, reason: "JOB_NOT_CLAIMED" };
+    if (assignment.record.manifest.nodeId !== nodeId) {
+      return { ok: false, reason: "NODE_MISMATCH" };
+    }
+    if (
+      nextState === "RUNNING" &&
+      (!assignment.record.leaseUntil || Date.parse(assignment.record.leaseUntil) <= Date.now())
+    ) {
+      return { ok: false, reason: "LEASE_EXPIRED" };
+    }
+    try {
+      assertJobTransition(job.state, nextState);
+    } catch {
+      return { ok: false, reason: "INVALID_STATE" };
+    }
+    const updated = { ...job, state: nextState, updatedAt: new Date().toISOString() };
+    this.jobs.set(jobId, updated);
+    return { ok: true, value: structuredClone(updated) };
   }
 }

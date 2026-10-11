@@ -51,7 +51,9 @@ export type OfferFailureReason =
   | "OFFER_EXPIRED"
   | "NODE_MISMATCH"
   | "NONCE_MISMATCH"
-  | "NONCE_ALREADY_USED";
+  | "NONCE_ALREADY_USED"
+  | "LEASE_EXPIRED"
+  | "JOB_NOT_CLAIMED";
 
 export type StoreResult<T> = { ok: true; value: T } | { ok: false; reason: OfferFailureReason };
 
@@ -77,6 +79,7 @@ export interface CoordinatorStore {
   authenticateRequester(tokenHash: string): Promise<RequesterRecord | null>;
   createPolicyCheckedJob(input: JobSubmission, risk: RiskDecision): Promise<JobRecord>;
   findJob(id: string): Promise<JobRecord | null>;
+  listPolicyCheckedJobs(limit: number): Promise<JobRecord[]>;
   transitionJob(
     id: string,
     nextState: JobState,
@@ -91,6 +94,7 @@ export interface CoordinatorStore {
   ): Promise<ProviderNodeRecord | null>;
   authenticateProvider(id: string, tokenHash: string): Promise<boolean>;
   findProvider(id: string): Promise<ProviderNodeRecord | null>;
+  listAvailableProviders(): Promise<ProviderNodeRecord[]>;
   heartbeatProvider(id: string, heartbeat: ProviderHeartbeat): Promise<ProviderNodeRecord | null>;
   createOffer(offer: SignedJobOffer): Promise<StoreResult<SignedJobOffer>>;
   listPendingOffers(nodeId: string, now: string): Promise<SignedJobOffer[]>;
@@ -102,4 +106,12 @@ export interface CoordinatorStore {
     now: string,
     leaseUntil: string,
   ): Promise<StoreResult<SignedJobOffer>>;
+  transitionAssignedJob(
+    jobId: string,
+    nodeId: string,
+    nextState: JobState,
+    actor: string,
+    correlationId: string,
+    safePayload?: Record<string, unknown>,
+  ): Promise<StoreResult<JobRecord>>;
 }

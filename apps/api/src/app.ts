@@ -1,14 +1,14 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import rateLimit from "@fastify/rate-limit";
 import {
   classifyRisk,
+  executionCompletionSchema,
   jobCreationSchema,
   offerClaimSchema,
   offerCreationSchema,
   providerHeartbeatSchema,
   providerRegistrationSchema,
   requesterRegistrationSchema,
-  type SignedJobOffer,
   workloadRequestSchema,
 } from "@powermesh/contracts";
 import Fastify from "fastify";
@@ -19,8 +19,10 @@ import {
   hashAgentToken,
   readBearerToken,
 } from "./auth/tokens";
+import { CoordinatorMatcher } from "./matcher";
 import { createOfferSigner, type OfferSigner } from "./offers/signing";
 import { type CoordinatorStore, MemoryCoordinatorStore } from "./store";
+import { createConfiguredWorkloadCatalog, type WorkloadCatalog } from "./workloads/catalog";
 
 interface BuildAppOptions {
   store?: CoordinatorStore;
@@ -29,6 +31,8 @@ interface BuildAppOptions {
   enrollmentKey?: string;
   now?: () => Date;
   rateLimitMax?: number;
+  workloadCatalog?: WorkloadCatalog;
+  autoMatch?: boolean;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -38,6 +42,9 @@ export function buildApp(options: BuildAppOptions = {}) {
   const coordinatorKey = options.coordinatorKey ?? process.env.POWERMESH_COORDINATOR_KEY;
   const enrollmentKey = options.enrollmentKey ?? process.env.POWERMESH_ENROLLMENT_KEY;
   const now = options.now ?? (() => new Date());
+  const workloadCatalog = options.workloadCatalog ?? createConfiguredWorkloadCatalog();
+  const matcher = new CoordinatorMatcher(store, offerSigner, now);
+  const autoMatch = options.autoMatch ?? true;
 
   app.register(rateLimit, {
     global: true,
@@ -70,7 +77,7 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   function failureStatus(reason: string): number {
     if (reason.endsWith("NOT_FOUND")) return 404;
-    if (reason === "OFFER_EXPIRED") return 410;
+    if (reason === "OFFER_EXPIRED" || reason === "LEASE_EXPIRED") return 410;
     if (reason === "CAPABILITY_MISMATCH") return 422;
     if (reason === "NODE_MISMATCH") return 403;
     return 409;
@@ -92,6 +99,15 @@ export function buildApp(options: BuildAppOptions = {}) {
       algorithm: "Ed25519",
       keyId: offerSigner.keyId,
       publicKey: offerSigner.publicKeyPem,
+    }));
+
+    app.get("/v1/workloads", async () => ({
+      workloads: workloadCatalog.list().map(({ definition, resources, input, paramsSchema }) => ({
+        ...definition,
+        resources,
+        input,
+        paramsSchema,
+      })),
     }));
 
     app.post("/v1/risk/classify", async (request, reply) => {
@@ -142,16 +158,39 @@ export function buildApp(options: BuildAppOptions = {}) {
           return reply.code(400).send({ error: "INVALID_JOB", issues: parsed.error.issues });
         }
 
-        const risk = classifyRisk(parsed.data.resources);
+        const catalogWorkload = workloadCatalog.get(parsed.data.workloadId);
+        if (!catalogWorkload) {
+          return reply.code(404).send({ error: "WORKLOAD_NOT_FOUND" });
+        }
+        if (!catalogWorkload.input.available && parsed.data.inputDigests.length > 0) {
+          return reply.code(422).send({ error: "ARTIFACT_TRANSPORT_UNAVAILABLE" });
+        }
+        if (parsed.data.inputDigests.length > catalogWorkload.input.maxFiles) {
+          return reply.code(400).send({ error: "TOO_MANY_INPUTS" });
+        }
+        let params: ReturnType<typeof catalogWorkload.parseParams>;
+        try {
+          params = catalogWorkload.parseParams(parsed.data.params);
+        } catch {
+          return reply.code(400).send({ error: "INVALID_WORKLOAD_PARAMS" });
+        }
+        const risk = classifyRisk(catalogWorkload.resources);
         if (!risk.executableInMvp) {
           return reply.code(422).send({ error: "WORKLOAD_NOT_EXECUTABLE", risk });
         }
 
         const job = await store.createPolicyCheckedJob(
-          { ...parsed.data, requesterId: requester.id },
+          {
+            requesterId: requester.id,
+            workload: catalogWorkload.definition,
+            resources: catalogWorkload.resources,
+            params,
+            inputDigests: parsed.data.inputDigests,
+          },
           risk,
         );
-        return reply.code(201).send({ job, risk });
+        if (autoMatch) await matcher.matchJob(job).catch(() => null);
+        return reply.code(201).send({ job: (await store.findJob(job.id)) ?? job, risk });
       },
     );
 
@@ -230,6 +269,7 @@ export function buildApp(options: BuildAppOptions = {}) {
 
         const node = await store.heartbeatProvider(params.data.id, body.data);
         if (!node) return reply.code(404).send({ error: "NODE_NOT_FOUND" });
+        if (autoMatch && node.status === "ONLINE") await matcher.sweep().catch(() => 0);
         return { node };
       },
     );
@@ -255,34 +295,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         if (!job) return reply.code(404).send({ error: "JOB_NOT_FOUND" });
         if (!node) return reply.code(404).send({ error: "NODE_NOT_FOUND" });
 
-        const issuedAt = now();
-        const offerId = randomUUID();
-        const manifest = {
-          version: 1 as const,
-          offerId,
-          jobId: job.id,
-          nodeId: node.id,
-          workload: job.workload,
-          resources: job.resources,
-          params: job.params,
-          inputDigests: job.inputDigests,
-          riskTier: job.riskTier,
-          nonce: randomBytes(32).toString("hex"),
-          issuedAt: issuedAt.toISOString(),
-          expiresAt: new Date(issuedAt.getTime() + body.data.ttlSeconds * 1_000).toISOString(),
-        };
-        const offer: SignedJobOffer = {
-          id: offerId,
-          manifest,
-          signature: offerSigner.sign(manifest),
-          signatureAlgorithm: "Ed25519",
-          keyId: offerSigner.keyId,
-          approvedAt: null,
-          claimedAt: null,
-          leaseUntil: null,
-        };
-
-        const result = await store.createOffer(offer);
+        const result = await matcher.createOfferForNode(job, node, body.data.ttlSeconds);
         if (!result.ok) {
           return reply.code(failureStatus(result.reason)).send({ error: result.reason });
         }
@@ -326,6 +339,89 @@ export function buildApp(options: BuildAppOptions = {}) {
           return reply.code(failureStatus(result.reason)).send({ error: result.reason });
         }
         return { offer: result.value };
+      },
+    );
+
+    app.post(
+      "/v1/nodes/:nodeId/jobs/:jobId/start",
+      { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const params = z
+          .object({ nodeId: z.string().uuid(), jobId: z.string().uuid() })
+          .safeParse(request.params);
+        if (!params.success) return reply.code(400).send({ error: "INVALID_JOB_ID" });
+        if (!(await authenticateNode(params.data.nodeId, request.headers.authorization))) {
+          return reply.code(401).send({ error: "INVALID_AGENT_CREDENTIAL" });
+        }
+        const result = await store.transitionAssignedJob(
+          params.data.jobId,
+          params.data.nodeId,
+          "RUNNING",
+          "PROVIDER_AGENT",
+          randomUUID(),
+        );
+        if (!result.ok) {
+          return reply.code(failureStatus(result.reason)).send({ error: result.reason });
+        }
+        return { job: result.value };
+      },
+    );
+
+    app.post(
+      "/v1/nodes/:nodeId/jobs/:jobId/complete",
+      { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const params = z
+          .object({ nodeId: z.string().uuid(), jobId: z.string().uuid() })
+          .safeParse(request.params);
+        const completion = executionCompletionSchema.safeParse(request.body);
+        if (!params.success || !completion.success) {
+          return reply.code(400).send({ error: "INVALID_EXECUTION_RESULT" });
+        }
+        if (!(await authenticateNode(params.data.nodeId, request.headers.authorization))) {
+          return reply.code(401).send({ error: "INVALID_AGENT_CREDENTIAL" });
+        }
+
+        const assignedJob = await store.findJob(params.data.jobId);
+        if (!assignedJob) return reply.code(404).send({ error: "JOB_NOT_FOUND" });
+        const outputWithinLimits =
+          completion.data.stdout.sizeBytes + completion.data.stderr.sizeBytes <=
+          assignedJob.resources.maxOutputBytes;
+
+        const failed =
+          completion.data.timedOut ||
+          completion.data.outputTruncated ||
+          !completion.data.outputValidated ||
+          !outputWithinLimits ||
+          completion.data.exitCode !== 0;
+        const first = await store.transitionAssignedJob(
+          params.data.jobId,
+          params.data.nodeId,
+          failed ? "FAILED" : "VALIDATING",
+          "PROVIDER_AGENT",
+          randomUUID(),
+          { ...completion.data, outputWithinLimits },
+        );
+        if (!first.ok) {
+          return reply.code(failureStatus(first.reason)).send({ error: first.reason });
+        }
+        if (failed) return { job: first.value };
+
+        const validated = await store.transitionAssignedJob(
+          params.data.jobId,
+          params.data.nodeId,
+          "SUCCEEDED",
+          "COORDINATOR_VALIDATOR",
+          randomUUID(),
+          {
+            stdoutDigest: completion.data.stdout.digest,
+            stderrDigest: completion.data.stderr.digest,
+          },
+        );
+        if (!validated.ok) {
+          return reply.code(failureStatus(validated.reason)).send({ error: validated.reason });
+        }
+        return { job: validated.value };
       },
     );
 

@@ -1,0 +1,139 @@
+import { generateKeyPairSync, sign } from "node:crypto";
+import { canonicalizeOfferManifest, type SignedJobOffer } from "@powermesh/contracts";
+import { describe, expect, it, vi } from "vitest";
+import { AgentJobLoop } from "./job-loop";
+import { coordinatorKeyId } from "./offer-verification";
+
+const nodeId = "11111111-1111-4111-8111-111111111111";
+const jobId = "22222222-2222-4222-8222-222222222222";
+const offerId = "33333333-3333-4333-8333-333333333333";
+
+function signedOffer(): { offer: SignedJobOffer; publicKey: string } {
+  const keys = generateKeyPairSync("ed25519");
+  const publicKey = keys.publicKey.export({ type: "spki", format: "pem" }).toString();
+  const manifest = {
+    version: 1 as const,
+    offerId,
+    jobId,
+    nodeId,
+    workload: {
+      id: "44444444-4444-4444-8444-444444444444",
+      name: "image-transform",
+      version: "1.0.0",
+      imageDigest: `sha256:${"a".repeat(64)}`,
+      imageReference: `ghcr.io/powermesh/image-transform@sha256:${"a".repeat(64)}`,
+    },
+    resources: {
+      cpu: 1,
+      memoryMb: 512,
+      timeoutSeconds: 60,
+      maxOutputBytes: 1024,
+      networkMode: "OFFLINE" as const,
+      allowedHosts: [],
+      needsHostMount: false,
+      privileged: false,
+      dockerSocket: false,
+      deviceAccess: false,
+      arbitraryImage: false,
+    },
+    params: { format: "webp", maxWidth: 1600, quality: 82 },
+    inputDigests: [],
+    riskTier: "LOW" as const,
+    nonce: "b".repeat(64),
+    issuedAt: "2026-10-10T08:00:00.000Z",
+    expiresAt: "2026-10-10T08:02:00.000Z",
+  };
+  return {
+    publicKey,
+    offer: {
+      id: offerId,
+      manifest,
+      signature: sign(
+        null,
+        Buffer.from(canonicalizeOfferManifest(manifest)),
+        keys.privateKey,
+      ).toString("base64url"),
+      signatureAlgorithm: "Ed25519",
+      keyId: coordinatorKeyId(publicKey),
+      approvedAt: null,
+      claimedAt: null,
+      leaseUntil: null,
+    },
+  };
+}
+
+describe("Agent job loop", () => {
+  it("heartbeats, verifies, approves, claims, executes, and reports without sending raw output", async () => {
+    const { offer, publicKey } = signedOffer();
+    const requests: Array<{ path: string; body?: unknown }> = [];
+    const fetcher = vi.fn(async (input: string, init?: RequestInit) => {
+      const path = new URL(input).pathname;
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      requests.push({ path, body });
+      const json = (value: unknown) =>
+        new Response(JSON.stringify(value), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      if (path.endsWith("/heartbeat")) return json({ node: { id: nodeId } });
+      if (path.endsWith("/offers")) return json({ offers: [offer] });
+      if (path.endsWith("/approve")) {
+        return json({ offer: { ...offer, approvedAt: "2026-10-10T08:00:10.000Z" } });
+      }
+      if (path.endsWith("/claim")) {
+        return json({
+          offer: {
+            ...offer,
+            approvedAt: "2026-10-10T08:00:10.000Z",
+            claimedAt: "2026-10-10T08:00:11.000Z",
+            leaseUntil: "2026-10-10T08:01:21.000Z",
+          },
+        });
+      }
+      if (path.endsWith("/start")) return json({ job: { id: jobId, state: "RUNNING" } });
+      if (path.endsWith("/complete")) return json({ job: { id: jobId, state: "SUCCEEDED" } });
+      return new Response(null, { status: 404 });
+    });
+    const executor = {
+      execute: vi.fn().mockResolvedValue({
+        exitCode: 0,
+        stdout: Buffer.from("RIFF\u0000\u0000\u0000\u0000WEBP"),
+        stderr: Buffer.alloc(0),
+        timedOut: false,
+        outputTruncated: false,
+      }),
+      kill: vi.fn().mockReturnValue(true),
+    };
+    const loop = new AgentJobLoop({
+      origin: "https://coordinator.example",
+      nodeId,
+      agentToken: "agent-token",
+      coordinatorPublicKey: publicKey,
+      runtime: {
+        dockerAvailable: true,
+        rootless: true,
+        isolationLevels: ["CONTAINER_BASELINE"],
+        reasons: [],
+      },
+      executor,
+      heartbeat: () => ({
+        availableCpu: 4,
+        availableMemoryMb: 4096,
+        activeJobs: 0,
+        status: "ONLINE",
+      }),
+      approveOffer: async () => true,
+      fetcher,
+    });
+
+    await expect(loop.runOnce()).resolves.toEqual([{ offerId, status: "SUCCEEDED" }]);
+    expect(executor.execute).toHaveBeenCalledOnce();
+    const completion = requests.find(({ path }) => path.endsWith("/complete"));
+    expect(completion?.body).toMatchObject({
+      exitCode: 0,
+      outputValidated: true,
+      stdout: { sizeBytes: 12, digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/) },
+    });
+    expect(JSON.stringify(completion?.body)).not.toContain("WEBP");
+  });
+});

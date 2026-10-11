@@ -5,6 +5,7 @@ const ALLOWED_TYPES = new Set([
   "application/pdf",
   "image/jpeg",
   "image/png",
+  "image/webp",
   "text/plain",
 ]);
 
@@ -53,6 +54,13 @@ export function validateOutput(
   }
   if (contentType === "image/jpeg" && !hasPrefix(data, [0xff, 0xd8, 0xff])) {
     throw new Error("JPEG signature does not match its content type");
+  }
+  if (
+    contentType === "image/webp" &&
+    (!hasPrefix(data, [0x52, 0x49, 0x46, 0x46]) ||
+      data.subarray(8, 12).toString("ascii") !== "WEBP")
+  ) {
+    throw new Error("WebP signature does not match its content type");
   }
   if (contentType === "application/json") JSON.parse(data.toString("utf8"));
   if (contentType === "text/plain") {

@@ -13,7 +13,8 @@ The first release proves one narrow workflow:
 3. A compatible provider sees the exact resource and network request.
 4. The provider explicitly approves or declines the offer.
 5. The Agent runs the approved workload inside a constrained sandbox.
-6. The coordinator validates the result and records an append-only event trail.
+6. The Agent validates bounded output bytes and reports only digest metadata; the coordinator records
+   the validated lifecycle in its append-only event trail.
 
 No requester receives shell access, host filesystem access, Docker socket access, or a direct connection to a provider device.
 
@@ -26,6 +27,8 @@ apps/
   agent/      Provider-side capability and execution Agent
 packages/
   contracts/  Shared schemas, states, risk rules, and fixtures
+workloads/
+  image-transform/  Reviewed offline demo workload
 docs/         Architecture, security, ownership, and decisions
 ```
 
@@ -51,7 +54,8 @@ The web app runs at `http://localhost:3000` and the API at `http://localhost:400
 
 Initial API routes:
 
-- `POST /v1/jobs` — validate, classify, and submit an eligible declarative job
+- `GET /v1/workloads` — list coordinator-approved workload releases and parameter schemas
+- `POST /v1/jobs` — submit a catalog workload by ID; image and resource policy are server-owned
 - `GET /v1/jobs/:id` — read the normalized job state
 - `POST /v1/nodes/register` — register or refresh a provider capability record
 - `POST /v1/nodes/:id/heartbeat` — publish live capacity without accepting inbound access
@@ -60,12 +64,43 @@ Initial API routes:
 - `GET /v1/nodes/:id/offers` — let an authenticated Agent poll outbound for pending work
 - `POST /v1/nodes/:nodeId/offers/:offerId/approve` — record explicit provider consent
 - `POST /v1/nodes/:nodeId/offers/:offerId/claim` — consume the nonce and start a short lease
+- `POST /v1/nodes/:nodeId/jobs/:jobId/start` — record authenticated Agent execution
+- `POST /v1/nodes/:nodeId/jobs/:jobId/complete` — report bounded hashes and validation status
+
+The matcher runs after job submission and provider heartbeats. It uses fresh heartbeats, exact
+capability checks, deterministic least-load ordering, and coordinator-side capacity reservations so
+pending offers cannot oversubscribe a node.
 
 Provider registration returns an Agent bearer token once. Keep it in the Agent's OS credential
 store; only its SHA-256 digest is persisted. Re-registration rotates the token and requires the
 current token. Production also requires a stable base64-encoded Ed25519 private key and separate
 coordinator and enrollment keys. Requester identity is derived from its issued bearer credential;
 clients cannot submit or read a job as another requester.
+
+## Image-transform workload
+
+Build the reviewed non-root workload image with:
+
+```bash
+pnpm workload:image:build
+```
+
+Publish it to a registry, use the registry's immutable `name@sha256:...` reference as
+`POWERMESH_IMAGE_TRANSFORM_IMAGE`, and restart the API. The requester supplies only validated
+`format`, `maxWidth`, and `quality` values; the coordinator supplies the image, limits, and offline
+network policy. The current demo transforms an embedded PowerMesh image. Requester artifact upload,
+quarantine, and delivery are intentionally not claimed as complete yet.
+
+First set `POWERMESH_COORDINATOR_URL`, `POWERMESH_ENROLLMENT_KEY`, and `POWERMESH_OWNER_ID`, then run
+`pnpm --filter @powermesh/agent enroll`. Verify the displayed signing-key fingerprint through a
+trusted channel and save the returned node ID as `POWERMESH_NODE_ID`. The Agent token and pinned key
+are written to Keychain, Windows DPAPI-backed storage, or Linux Secret Service—not to `.env`.
+
+With `POWERMESH_COORDINATOR_URL`, `POWERMESH_NODE_ID`, and enrolled credentials present in the OS
+credential store, the Agent polls outbound for signed offers, verifies the pinned Ed25519 key,
+approves according to local policy, claims once, executes, validates output magic bytes, and reports
+only sizes and SHA-256 digests. `POWERMESH_AUTO_APPROVE_LOW_RISK=true` is an explicit demo-only local
+policy choice; it never enables medium- or high-risk auto-approval.
 
 ## Quality checks
 
@@ -98,4 +133,6 @@ Read [the architecture](docs/ARCHITECTURE.md), [security baseline](docs/SECURITY
 
 ## Current phase
 
-Phase 0 — Align. Freeze contracts and safety claims before building the real execution path.
+Phase 1 — Secure execution loop. The catalog, automatic matcher, authenticated Agent loop, sandbox
+adapter, and offline image-transform workload are implemented. Artifact transport and provider UI
+integration remain the next milestone.
