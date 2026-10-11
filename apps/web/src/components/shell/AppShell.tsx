@@ -41,6 +41,8 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
+  if (pathname === "/") return <>{children}</>;
+
   const switchRole = async (next: Role) => {
     setSwitching(true);
     try {
@@ -108,9 +110,14 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
       </a>
 
       <header className={styles.topbar}>
-        <Link href={ROLE_HOME[role]} className={styles.brand} aria-label="PowerMesh home">
+        <Link href="/" className={styles.brand} aria-label="PowerMesh landing page">
           <Logo />
         </Link>
+        <div className={styles.desktopNav}>{nav}</div>
+        <div className={styles.desktopActions}>
+          {roleSwitch("pm-role-topbar")}
+          {USES_SIMULATOR ? <DemoControls /> : null}
+        </div>
         <button
           ref={menuButton}
           type="button"
@@ -135,18 +142,6 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
           {USES_SIMULATOR ? <DemoControls /> : null}
         </div>
       </div>
-
-      <aside className={styles.sidebar} aria-label="Sidebar">
-        <Link href={ROLE_HOME[role]} className={styles.brand} aria-label="PowerMesh home">
-          <Logo />
-        </Link>
-        <p className={styles.tagline}>Share a capability, not a device.</p>
-        {nav}
-        <div className={styles.sidebarFooter}>
-          {roleSwitch("pm-role-sidebar")}
-          {USES_SIMULATOR ? <DemoControls /> : null}
-        </div>
-      </aside>
 
       <main id="main" className={styles.main} tabIndex={-1}>
         {IS_LIVE ? (

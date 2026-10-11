@@ -72,4 +72,18 @@ describe("Docker sandbox command", () => {
     expect(args).toContain("HTTP_PROXY=http://10.64.1.2:8080");
     expect(args).not.toContain("--network=bridge");
   });
+
+  it("passes only the selected NVIDIA device to a CUDA workload", () => {
+    const args = buildDockerArgs(
+      {
+        ...baseJob,
+        isolation: "CONTAINER_BASELINE",
+        accelerator: { kind: "NVIDIA_CUDA", deviceIds: ["0"] },
+      },
+      "powermesh-gpu",
+    );
+    expect(args).toContain("--gpus");
+    expect(args).toContain("device=0");
+    expect(args).not.toContain("--runtime=runsc");
+  });
 });

@@ -48,6 +48,7 @@ function provider(id: string, overrides: Partial<ProviderNodeRecord> = {}): Prov
     isolationLevels: ["CONTAINER_BASELINE"],
     availableCpu: 8,
     availableMemoryMb: 8192,
+    availableGpuCount: 0,
     activeJobs: 0,
     status: "ONLINE",
     lastHeartbeatAt: now.toISOString(),
@@ -82,5 +83,26 @@ describe("coordinator matcher", () => {
       now,
     );
     expect(selected).toBeNull();
+  });
+
+  it("matches CUDA jobs only to providers with available NVIDIA capacity", () => {
+    const gpuJob: JobRecord = {
+      ...job,
+      resources: { ...job.resources, accelerator: "NVIDIA_CUDA", gpuCount: 1 },
+    };
+    const selected = selectProvider(
+      gpuJob,
+      [
+        provider("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+        provider("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", {
+          accelerators: [
+            { kind: "NVIDIA_CUDA", index: 0, name: "NVIDIA RTX Demo", memoryMb: 8192 },
+          ],
+          availableGpuCount: 1,
+        }),
+      ],
+      now,
+    );
+    expect(selected?.id).toBe("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
   });
 });

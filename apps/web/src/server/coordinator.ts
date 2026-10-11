@@ -61,6 +61,7 @@ export interface CoordinatorJob {
   state: CoordinatorJobState;
   createdAt: string;
   updatedAt: string;
+  resultSummary?: Job["resultSummary"];
 }
 
 export const COORDINATOR_TERMINAL: readonly CoordinatorJobState[] = [
@@ -344,6 +345,8 @@ async function toView(job: CoordinatorJob): Promise<Job> {
     inputDigest: job.inputDigests[0],
     risk: explain({ ...decision, tier: job.riskTier }, job.createdAt),
     networkMode: job.resources.networkMode,
+    accelerator: job.resources.accelerator === "NVIDIA_CUDA" ? "cuda" : "none",
+    resultSummary: job.resultSummary,
     limits: {
       cpuCores: job.resources.cpu,
       memoryBytes: job.resources.memoryMb * MB,

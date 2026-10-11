@@ -48,6 +48,9 @@ const offer: SignedJobOffer = {
 const rootless: RuntimeCapability = {
   dockerAvailable: true,
   rootless: true,
+  canExecute: true,
+  executionMode: "ROOTLESS_LINUX",
+  accelerators: [],
   isolationLevels: ["CONTAINER_BASELINE"],
   reasons: [],
 };
@@ -59,10 +62,15 @@ describe("sandbox policy", () => {
     expect(job.limits).toMatchObject({ cpu: 1, memoryMb: 256, pids: 128, maxOutputBytes: 1024 });
   });
 
-  it("requires rootless Docker and gVisor for medium-risk work", () => {
-    expect(() => sandboxJobFromVerifiedOffer(offer, { ...rootless, rootless: false })).toThrow(
-      /ROOTLESS/,
-    );
+  it("requires an executable runtime and gVisor for medium-risk work", () => {
+    expect(() =>
+      sandboxJobFromVerifiedOffer(offer, {
+        ...rootless,
+        rootless: false,
+        canExecute: false,
+        executionMode: "UNAVAILABLE",
+      }),
+    ).toThrow(/RUNTIME/);
     const medium = { ...offer, manifest: { ...offer.manifest, riskTier: "MEDIUM" as const } };
     expect(() => sandboxJobFromVerifiedOffer(medium, rootless)).toThrow(/GVISOR/);
     expect(
@@ -71,5 +79,27 @@ describe("sandbox policy", () => {
         isolationLevels: ["CONTAINER_BASELINE", "GVISOR"],
       }).isolation,
     ).toBe("GVISOR");
+  });
+
+  it("routes a CUDA workload only to detected NVIDIA devices", () => {
+    const gpuOffer: SignedJobOffer = {
+      ...offer,
+      manifest: {
+        ...offer.manifest,
+        resources: {
+          ...offer.manifest.resources,
+          accelerator: "NVIDIA_CUDA",
+          gpuCount: 1,
+        },
+      },
+    };
+    expect(() => sandboxJobFromVerifiedOffer(gpuOffer, rootless)).toThrow(/CUDA_CAPABILITY/);
+    const job = sandboxJobFromVerifiedOffer(gpuOffer, {
+      ...rootless,
+      accelerators: [{ kind: "NVIDIA_CUDA", index: 0, name: "NVIDIA RTX Demo", memoryMb: 8192 }],
+      isolationLevels: ["CONTAINER_BASELINE", "GVISOR"],
+    });
+    expect(job.accelerator).toEqual({ kind: "NVIDIA_CUDA", deviceIds: ["0"] });
+    expect(job.isolation).toBe("CONTAINER_BASELINE");
   });
 });

@@ -6,6 +6,7 @@ import {
 import { z } from "zod";
 
 export const imageTransformWorkloadId = "7d8af71b-4a16-4cc2-9c6f-579adb5c0d8f";
+export const gpuBenchmarkWorkloadId = "a7b6d620-2ea7-4ea8-a728-3408b174b1c8";
 
 const imageTransformParamsSchema = z
   .object({
@@ -15,12 +16,19 @@ const imageTransformParamsSchema = z
   })
   .strict();
 
+const gpuBenchmarkParamsSchema = z
+  .object({
+    matrixSize: z.number().int().min(256).max(4096).multipleOf(256).default(2048),
+    iterations: z.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
 export interface CatalogWorkload {
   definition: JobSubmission["workload"];
   resources: WorkloadRequest;
   input: {
     available: boolean;
-    contentTypes: readonly ["image/png", "image/jpeg", "image/webp"];
+    contentTypes: readonly string[];
     maxFiles: number;
     maxBytesPerFile: number;
     maxTotalBytes: number;
@@ -41,6 +49,22 @@ const imageTransformResources: WorkloadRequest = {
   dockerSocket: false,
   deviceAccess: false,
   arbitraryImage: false,
+};
+
+const gpuBenchmarkResources: WorkloadRequest = {
+  cpu: 2,
+  memoryMb: 2048,
+  timeoutSeconds: 180,
+  maxOutputBytes: 64 * 1024,
+  networkMode: "OFFLINE",
+  allowedHosts: [],
+  needsHostMount: false,
+  privileged: false,
+  dockerSocket: false,
+  deviceAccess: false,
+  arbitraryImage: false,
+  accelerator: "NVIDIA_CUDA",
+  gpuCount: 1,
 };
 
 function imageTransformWorkload(imageReference: string): CatalogWorkload {
@@ -90,6 +114,51 @@ function imageTransformWorkload(imageReference: string): CatalogWorkload {
   };
 }
 
+function gpuBenchmarkWorkload(imageReference: string): CatalogWorkload {
+  const pinnedReference = pinnedImageReferenceSchema.parse(imageReference);
+  const imageDigest = pinnedReference.slice(pinnedReference.lastIndexOf("@") + 1);
+  return {
+    definition: {
+      id: gpuBenchmarkWorkloadId,
+      name: "gpu-benchmark",
+      version: "1.0.0",
+      imageDigest,
+      imageReference: pinnedReference,
+    },
+    resources: gpuBenchmarkResources,
+    input: {
+      available: true,
+      contentTypes: [],
+      maxFiles: 0,
+      maxBytesPerFile: 0,
+      maxTotalBytes: 0,
+    },
+    paramsSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["matrixSize", "iterations"],
+      properties: {
+        matrixSize: {
+          type: "integer",
+          minimum: 256,
+          maximum: 4096,
+          multipleOf: 256,
+          default: 2048,
+          title: "Matrix size",
+        },
+        iterations: {
+          type: "integer",
+          minimum: 1,
+          maximum: 100,
+          default: 20,
+          title: "GPU iterations",
+        },
+      },
+    },
+    parseParams: (input) => gpuBenchmarkParamsSchema.parse(input),
+  };
+}
+
 export class WorkloadCatalog {
   private readonly entries = new Map<string, CatalogWorkload>();
 
@@ -111,8 +180,12 @@ export class WorkloadCatalog {
 
 export function createConfiguredWorkloadCatalog(
   imageReference = process.env.POWERMESH_IMAGE_TRANSFORM_IMAGE,
+  gpuImageReference = process.env.POWERMESH_GPU_BENCHMARK_IMAGE,
 ): WorkloadCatalog {
-  return new WorkloadCatalog(imageReference ? [imageTransformWorkload(imageReference)] : []);
+  return new WorkloadCatalog([
+    ...(imageReference ? [imageTransformWorkload(imageReference)] : []),
+    ...(gpuImageReference ? [gpuBenchmarkWorkload(gpuImageReference)] : []),
+  ]);
 }
 
 export function createTestWorkloadCatalog(digestCharacter = "a"): WorkloadCatalog {

@@ -126,6 +126,7 @@ export const CUSTOM_CONTAINER: WorkloadDefinition = {
   runsRequesterCode: true,
   needsSecrets: false,
   needsDeviceAccess: false,
+  accelerator: "none",
   input: { contentTypes: [], maxFiles: 0, maxBytesPerFile: 0, maxTotalBytes: 0 },
   output: { contentTypes: [], maxBytesPerFile: 0 },
   paramsSchema: NO_PARAMS,

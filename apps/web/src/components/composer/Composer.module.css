@@ -5,7 +5,7 @@
 
 @media (min-width: 1040px) {
   .layout {
-    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 380px);
     align-items: start;
   }
 }
@@ -17,7 +17,24 @@
 @media (min-width: 1040px) {
   .side {
     position: sticky;
-    top: var(--pm-space-5);
+    top: calc(var(--pm-topbar-height) + var(--pm-space-4));
+    max-height: calc(100dvh - var(--pm-topbar-height) - var(--pm-space-6));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--pm-line-strong) transparent;
+  }
+
+  .side::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .side::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .side::-webkit-scrollbar-thumb {
+    background: var(--pm-line-strong);
   }
 }
 

@@ -5,6 +5,7 @@ import { isolationCapabilitySchema } from "./capabilities";
 import { offerCreationSchema } from "./offers";
 import { meViewSchema } from "./platform";
 import { providerPolicySchema } from "./provider";
+import { workloadRequestSchema } from "./schemas";
 import { protocolTiming, terminalFailureSchema } from "./terminal";
 
 const firstId = "11111111-1111-4111-8111-111111111111";
@@ -132,6 +133,40 @@ describe("v0 result and failure contracts", () => {
         reason: "Invalid pairing",
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("GPU execution contracts", () => {
+  const baseline = {
+    cpu: 2,
+    memoryMb: 2048,
+    timeoutSeconds: 180,
+    maxOutputBytes: 65_536,
+    networkMode: "OFFLINE",
+    allowedHosts: [],
+    needsHostMount: false,
+    privileged: false,
+    dockerSocket: false,
+    deviceAccess: false,
+    arbitraryImage: false,
+  } as const;
+
+  it("requires a positive GPU count only for a declared accelerator", () => {
+    expect(
+      workloadRequestSchema.safeParse({
+        ...baseline,
+        accelerator: "NVIDIA_CUDA",
+        gpuCount: 1,
+      }).success,
+    ).toBe(true);
+    expect(
+      workloadRequestSchema.safeParse({
+        ...baseline,
+        accelerator: "NVIDIA_CUDA",
+        gpuCount: 0,
+      }).success,
+    ).toBe(false);
+    expect(workloadRequestSchema.safeParse({ ...baseline, gpuCount: 1 }).success).toBe(false);
   });
 });
 

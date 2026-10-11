@@ -1,5 +1,6 @@
 import { AnnouncerProvider } from "@powermesh/ui";
 import type { Metadata, Viewport } from "next";
+import { AnnouncerProvider } from "@powermesh/ui";
 import { Chakra_Petch, IBM_Plex_Mono } from "next/font/google";
 import { AppShell } from "@/components/shell/AppShell";
 import { getRole } from "@/lib/session";
@@ -32,7 +33,7 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const role = await getRole();
   return (
-    <html lang="en" className={`${sans.variable} ${mono.variable}`}>
+    <html lang="en">
       <body>
         <AnnouncerProvider>
           <AppShell role={role}>{children}</AppShell>

@@ -77,6 +77,13 @@ export function Composer() {
   const summaryRef = useRef<HTMLDivElement>(null);
 
   const workload: WorkloadDefinition | undefined = workloads.data?.find((w) => w.id === workloadId);
+  const hasInputs = Boolean(workload && workload.input.maxFiles > 0);
+
+  useEffect(() => {
+    if (workloads.data?.length && !workloads.data.some((entry) => entry.id === workloadId)) {
+      setWorkloadId(workloads.data[0].id);
+    }
+  }, [workloads.data, workloadId]);
   // Q28: form controls are rendered from the workload's paramsSchema + x-ui hints.
   const specs = useMemo(() => (workload ? paramSpecs(workload.paramsSchema) : []), [workload]);
 
@@ -96,7 +103,7 @@ export function Composer() {
       return e;
     }
     const schema = workload.input;
-    if (source === "upload") {
+    if (hasInputs && source === "upload") {
       if (uploads.length === 0) e.inputs = "Add at least one image.";
       else if (uploads.length > schema.maxFiles)
         e.inputs = `Up to ${schema.maxFiles} images per job — remove ${uploads.length - schema.maxFiles}.`;
@@ -163,8 +170,8 @@ export function Composer() {
         workloadId: workload.id,
         params: typed,
         networkMode: network,
-        inputs: source === "upload" ? uploads : [],
-        sampleSet: source === "sample" ? SAMPLE_SET.id : undefined,
+        inputs: hasInputs && source === "upload" ? uploads : [],
+        sampleSet: hasInputs && source === "sample" ? SAMPLE_SET.id : undefined,
       });
       announce(`Job ${job.id} submitted. Checking policy.`);
       router.push(`/jobs/${job.id}`);
@@ -293,7 +300,11 @@ export function Composer() {
               id="section-inputs"
               eyebrow="Step 2"
               title="Inputs"
-              description={`${workload.input.contentTypes.map(contentTypeLabel).join(", ")} · up to ${workload.input.maxFiles} images, ${formatBytes(workload.input.maxBytesPerFile)} each.`}
+              description={
+                hasInputs
+                  ? `${workload.input.contentTypes.map(contentTypeLabel).join(", ")} · up to ${workload.input.maxFiles} images, ${formatBytes(workload.input.maxBytesPerFile)} each.`
+                  : "No files or requester code are sent to this workload."
+              }
             >
               <div className="pm-stack-sm">
                 <ChoiceGroup<InputSource>
@@ -376,11 +387,59 @@ export function Composer() {
                           {uploads.length} file{uploads.length === 1 ? "" : "s"} ·{" "}
                           {formatBytes(totalUpload)} total
                         </li>
-                      </ul>
-                    ) : null}
-                  </div>
-                )}
-              </div>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="pm-stack-sm">
+                      <Field
+                        label="Choose images"
+                        hint={
+                          IS_LIVE
+                            ? "Only file names, types and sizes are sent — the coordinator has no upload storage yet, so it receives no input digests for your own files."
+                            : USES_SIMULATOR
+                              ? "Offline demo: only file names, types and sizes are sent — outputs use the demo images. These checks are early feedback, not a security guarantee — the server validates again."
+                              : "Files are uploaded to scoped, short-lived storage and staged read-only for the job."
+                        }
+                        error={showErrors ? allErrors.inputs : undefined}
+                      >
+                        <input
+                          type="file"
+                          multiple
+                          accept={workload.input.contentTypes.join(",")}
+                          onChange={onUpload}
+                          className={styles.file}
+                        />
+                      </Field>
+                      {uploads.length > 0 ? (
+                        <ul role="list" className={styles.fileList}>
+                          {uploads.map((f) => {
+                            const ok =
+                              workload.input.contentTypes.includes(f.contentType) &&
+                              f.bytes <= workload.input.maxBytesPerFile;
+                            return (
+                              <li key={f.name} className={ok ? undefined : styles.fileBad}>
+                                <Icon name={ok ? "image" : "alert"} />
+                                <span className="pm-mono">{f.name}</span>
+                                <span className="pm-muted">
+                                  {contentTypeLabel(f.contentType)} · {formatBytes(f.bytes)}
+                                </span>
+                              </li>
+                            );
+                          })}
+                          <li className="pm-muted pm-small">
+                            {uploads.length} file{uploads.length === 1 ? "" : "s"} ·{" "}
+                            {formatBytes(totalUpload)} total
+                          </li>
+                        </ul>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Banner tone="info" title="Hardware-only verification">
+                  The provider runs the fixed benchmark image and returns only validated GPU facts.
+                </Banner>
+              )}
             </Panel>
 
             {specs.length > 0 ? (
@@ -502,6 +561,9 @@ export function Composer() {
                           ? "Demo sample set · 3 PNG images"
                           : `${uploads.length} image${uploads.length === 1 ? "" : "s"} · ${formatBytes(totalUpload)}`,
                     },
+                    ...(workload.accelerator === "cuda"
+                      ? [{ label: "Hardware", value: "NVIDIA CUDA GPU required" }]
+                      : []),
                     { label: "Network", value: NETWORK_COPY[network].label },
                   ]}
                 />

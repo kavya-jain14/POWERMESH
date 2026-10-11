@@ -60,6 +60,7 @@ export function buildDockerArgs(job: SandboxJob, containerName: string): string[
           "NO_PROXY=",
         ]),
     "--read-only",
+    ...(job.accelerator ? ["--gpus", `device=${job.accelerator.deviceIds.join(",")}`] : []),
     "--user=65532:65532",
     "--cap-drop=ALL",
     "--security-opt=no-new-privileges=true",
