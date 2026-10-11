@@ -39,7 +39,7 @@ model call (`risk-explainer.test.ts`).
 
 - The coordinator's Postgres store runs unchanged on a Tiger Cloud service: set `DATABASE_URL`, run
   `pnpm --filter @powermesh/api db:migrate`, and start the API. `/health` reports `"storage": "postgres"`.
-- Migration `0006_node_heartbeat_history.sql` adds `node_heartbeats`. On TimescaleDB it becomes a hypertable
+- Migration `0007_node_heartbeat_history.sql` adds `node_heartbeats`. On TimescaleDB it becomes a hypertable
   (1-day chunks), compressed after 1 day (segmented by node) and dropped after 30 days. On plain Postgres it stays a
   normal table, so local docker-compose still works.
 - Every provider heartbeat appends a row, best effort. A slow database never blocks a heartbeat.

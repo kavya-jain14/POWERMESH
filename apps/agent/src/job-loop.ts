@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import {
+  type GpuBenchmarkResult,
+  gpuBenchmarkResultSchema,
   type ProviderHeartbeat,
   protocolTiming,
   type SignedJobOffer,
@@ -45,9 +47,34 @@ function outputSummary(data: Buffer) {
   };
 }
 
-function validateWorkloadOutput(offer: SignedJobOffer, result: SandboxResult): boolean {
-  if (result.exitCode !== 0 || result.timedOut || result.outputTruncated) return false;
-  if (offer.manifest.workload.name !== "image-transform") return false;
+function validateWorkloadOutput(
+  offer: SignedJobOffer,
+  result: SandboxResult,
+): { valid: boolean; resultSummary?: GpuBenchmarkResult } {
+  if (result.exitCode !== 0 || result.timedOut || result.outputTruncated) return { valid: false };
+  if (offer.manifest.workload.name === "gpu-benchmark") {
+    try {
+      validateOutput(
+        "gpu-benchmark.json",
+        "application/json",
+        result.stdout,
+        offer.manifest.resources.maxOutputBytes,
+      );
+      const resultSummary = gpuBenchmarkResultSchema.parse(
+        JSON.parse(result.stdout.toString("utf8")),
+      );
+      if (
+        resultSummary.matrixSize !== Number(offer.manifest.params.matrixSize) ||
+        resultSummary.iterations !== Number(offer.manifest.params.iterations)
+      ) {
+        return { valid: false };
+      }
+      return { valid: true, resultSummary };
+    } catch {
+      return { valid: false };
+    }
+  }
+  if (offer.manifest.workload.name !== "image-transform") return { valid: false };
   const format = offer.manifest.params.format;
   const contentType =
     format === "png" ? "image/png" : format === "jpeg" ? "image/jpeg" : "image/webp";
@@ -59,13 +86,17 @@ function validateWorkloadOutput(offer: SignedJobOffer, result: SandboxResult): b
       result.stdout,
       offer.manifest.resources.maxOutputBytes,
     );
-    return true;
+    return { valid: true };
   } catch {
-    return false;
+    return { valid: false };
   }
 }
 
-function completionFromResult(result: SandboxResult, outputValidated: boolean) {
+function completionFromResult(
+  result: SandboxResult,
+  outputValidated: boolean,
+  resultSummary?: GpuBenchmarkResult,
+) {
   return {
     exitCode: result.exitCode,
     timedOut: result.timedOut,
@@ -73,6 +104,7 @@ function completionFromResult(result: SandboxResult, outputValidated: boolean) {
     outputValidated,
     stdout: outputSummary(result.stdout),
     stderr: outputSummary(result.stderr),
+    ...(resultSummary ? { resultSummary } : {}),
   };
 }
 
@@ -180,13 +212,13 @@ export class AgentJobLoop {
       this.running.delete(offer.manifest.jobId);
     }
 
-    const outputValidated = validateWorkloadOutput(offer, result);
+    const validation = validateWorkloadOutput(offer, result);
     await this.postJson(
       `/v1/nodes/${this.options.nodeId}/jobs/${offer.manifest.jobId}/complete`,
-      completionFromResult(result, outputValidated),
+      completionFromResult(result, validation.valid, validation.resultSummary),
     );
     const succeeded =
-      result.exitCode === 0 && !result.timedOut && !result.outputTruncated && outputValidated;
+      result.exitCode === 0 && !result.timedOut && !result.outputTruncated && validation.valid;
     return { offerId: offer.id, status: succeeded ? "SUCCEEDED" : "FAILED" };
   }
 

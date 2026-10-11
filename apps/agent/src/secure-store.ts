@@ -62,12 +62,21 @@ export class SystemCredentialStore implements CredentialStore {
   constructor(
     private readonly platform: NodeJS.Platform = process.platform,
     private readonly runner: CommandRunner = runCommand,
+    private readonly mode: "system" | "windows-dpapi" = process.env.POWERMESH_CREDENTIAL_STORE ===
+    "windows-dpapi"
+      ? "windows-dpapi"
+      : "system",
   ) {}
+
+  private credentialPlatform(): NodeJS.Platform {
+    return this.mode === "windows-dpapi" ? "win32" : this.platform;
+  }
 
   async get(account: string): Promise<string | null> {
     const key = safeAccount(account);
+    const platform = this.credentialPlatform();
     let result: CommandResult;
-    if (this.platform === "darwin") {
+    if (platform === "darwin") {
       result = await this.runner("security", [
         "find-generic-password",
         "-s",
@@ -76,7 +85,7 @@ export class SystemCredentialStore implements CredentialStore {
         key,
         "-w",
       ]);
-    } else if (this.platform === "win32") {
+    } else if (platform === "win32") {
       result = await this.runner("powershell.exe", [
         "-NoProfile",
         "-NonInteractive",
@@ -84,20 +93,21 @@ export class SystemCredentialStore implements CredentialStore {
         windowsScript.get,
         key,
       ]);
-    } else if (this.platform === "linux") {
+    } else if (platform === "linux") {
       result = await this.runner("secret-tool", ["lookup", "service", "PowerMesh", "account", key]);
     } else {
       throw new Error("UNSUPPORTED_CREDENTIAL_STORE");
     }
-    if (result.code === 2 || (this.platform === "darwin" && result.code === 44)) return null;
+    if (result.code === 2 || (platform === "darwin" && result.code === 44)) return null;
     if (result.code !== 0) throw new Error("CREDENTIAL_STORE_UNAVAILABLE");
     return result.stdout.trimEnd();
   }
 
   async set(account: string, secret: string): Promise<void> {
     const key = safeAccount(account);
+    const platform = this.credentialPlatform();
     let result: CommandResult;
-    if (this.platform === "darwin") {
+    if (platform === "darwin") {
       result = await this.runner("security", [
         "add-generic-password",
         "-U",
@@ -108,13 +118,13 @@ export class SystemCredentialStore implements CredentialStore {
         "-w",
         secret,
       ]);
-    } else if (this.platform === "win32") {
+    } else if (platform === "win32") {
       result = await this.runner(
         "powershell.exe",
         ["-NoProfile", "-NonInteractive", "-Command", windowsScript.set, key],
         secret,
       );
-    } else if (this.platform === "linux") {
+    } else if (platform === "linux") {
       result = await this.runner(
         "secret-tool",
         ["store", "--label=PowerMesh", "service", "PowerMesh", "account", key],
@@ -128,8 +138,9 @@ export class SystemCredentialStore implements CredentialStore {
 
   async delete(account: string): Promise<void> {
     const key = safeAccount(account);
+    const platform = this.credentialPlatform();
     let result: CommandResult;
-    if (this.platform === "darwin") {
+    if (platform === "darwin") {
       result = await this.runner("security", [
         "delete-generic-password",
         "-s",
@@ -137,7 +148,7 @@ export class SystemCredentialStore implements CredentialStore {
         "-a",
         key,
       ]);
-    } else if (this.platform === "win32") {
+    } else if (platform === "win32") {
       result = await this.runner("powershell.exe", [
         "-NoProfile",
         "-NonInteractive",
@@ -145,7 +156,7 @@ export class SystemCredentialStore implements CredentialStore {
         windowsScript.delete,
         key,
       ]);
-    } else if (this.platform === "linux") {
+    } else if (platform === "linux") {
       result = await this.runner("secret-tool", ["clear", "service", "PowerMesh", "account", key]);
     } else {
       throw new Error("UNSUPPORTED_CREDENTIAL_STORE");

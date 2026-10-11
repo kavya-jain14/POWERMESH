@@ -28,11 +28,13 @@ import type {
   InputFileMeta,
   InputSummary,
   Job,
+  ParamsSchema,
   RiskBlockedDetails,
   RiskExplanation,
   SubmitJobRequest,
+  WorkloadDefinition,
 } from "@/contracts-draft/types";
-import { getWorkload, WORKLOADS } from "@/contracts-draft/workloads";
+import { getWorkload } from "@/contracts-draft/workloads";
 import sampleManifest from "@/mock/sample-manifest.json";
 
 export const COORDINATOR_URL = (
@@ -61,6 +63,7 @@ export interface CoordinatorJob {
   state: CoordinatorJobState;
   createdAt: string;
   updatedAt: string;
+  resultSummary?: Job["resultSummary"];
 }
 
 export const COORDINATOR_TERMINAL: readonly CoordinatorJobState[] = [
@@ -277,7 +280,6 @@ interface BridgeMemory {
    * the coordinator authorised it for.
    */
   jobs: Map<string, { at: number; job: CoordinatorJob }>;
-  workloadIds: Map<string, string>;
 }
 
 const bridgeGlobal = globalThis as { __pmLiveBridge?: BridgeMemory };
@@ -285,10 +287,8 @@ bridgeGlobal.__pmLiveBridge ??= {
   inputs: new Map(),
   risk: new Map(),
   jobs: new Map(),
-  workloadIds: new Map(),
 };
 const memory: BridgeMemory = bridgeGlobal.__pmLiveBridge;
-memory.workloadIds ??= new Map();
 
 const JOB_CACHE_MS = 2500;
 
@@ -344,6 +344,8 @@ async function toView(job: CoordinatorJob): Promise<Job> {
     inputDigest: job.inputDigests[0],
     risk: explain({ ...decision, tier: job.riskTier }, job.createdAt),
     networkMode: job.resources.networkMode,
+    accelerator: job.resources.accelerator === "NVIDIA_CUDA" ? "cuda" : "none",
+    resultSummary: job.resultSummary,
     limits: {
       cpuCores: job.resources.cpu,
       memoryBytes: job.resources.memoryMb * MB,
@@ -418,74 +420,12 @@ function inputsFor(req: SubmitJobRequest): { summary: InputSummary; digests: str
   };
 }
 
-/** The coordinator's catalogue ids (UUIDs) by workload name. Fetched once per process. */
-async function coordinatorWorkloadId(name: string): Promise<string> {
-  const known = memory.workloadIds.get(name);
-  if (known) return known;
-  const { status, body } = await upstream<{ workloads?: { id: string; name: string }[] }>(
-    "/v1/workloads",
-  );
-  if (status !== 200) raise(status, body);
-  for (const w of body.workloads ?? []) memory.workloadIds.set(w.name, w.id);
-  const id = memory.workloadIds.get(name);
-  if (!id) {
-    throw new BridgeError(
-      503,
-      "UNAVAILABLE",
-      `The coordinator has no "${name}" workload configured. Set POWERMESH_IMAGE_TRANSFORM_IMAGE for the API and restart it.`,
-    );
-  }
-  return id;
-}
-
 export async function submitJob(req: SubmitJobRequest): Promise<Job> {
-  const workload = getWorkload(req.workloadId);
-  if (!workload)
-    throw new BridgeError(400, "VALIDATION_FAILED", "Pick a workload from the catalogue.", {
-      workloadId: "Unknown workload.",
-    });
-
-  const { summary } = inputsFor(req);
-
-  // The catalogue fixes the network mode (offline). A different choice is classified by the coordinator's own policy
-  // engine first, so the block and its reasons still come from the real rules.
-  if (req.networkMode !== "OFFLINE") {
-    const decision = await classify({
-      cpu: workload.limits.cpuCores,
-      memoryMb: Math.round(workload.limits.memoryBytes / MB),
-      timeoutSeconds: workload.limits.timeoutSeconds,
-      maxOutputBytes: 50 * MB,
-      networkMode: req.networkMode,
-      allowedHosts: [],
-      needsHostMount: false,
-      privileged: false,
-      dockerSocket: false,
-      deviceAccess: workload.needsDeviceAccess,
-      arbitraryImage: workload.runsRequesterCode || !workload.signatureVerified,
-    });
-    if (!decision.executableInMvp) {
-      const details: RiskBlockedDetails = { risk: explain(decision, new Date().toISOString()) };
-      throw new BridgeError(
-        422,
-        "RISK_BLOCKED",
-        "This request is blocked by the current safety policy.",
-        undefined,
-        { ...details },
-      );
-    }
-    throw new BridgeError(
-      400,
-      "VALIDATION_FAILED",
-      "Coordinator v0 runs this workload offline only.",
-      { networkMode: "Choose Offline." },
-    );
-  }
-
+  const { summary, digests } = inputsFor(req);
   const candidate = {
-    workloadId: await coordinatorWorkloadId(workload.id),
+    workloadId: req.workloadId,
     params: req.params,
-    // Artifact upload isn't wired in API v0 (input.available = false), so no digests are sent yet.
-    inputDigests: [],
+    inputDigests: digests,
   };
 
   // Validate against the shared contract before sending, so the error points at our field, not theirs.
@@ -545,7 +485,58 @@ export async function coordinatorHealth(): Promise<{ reachable: boolean; storage
   }
 }
 
-export const CATALOGUE = WORKLOADS;
+type CoordinatorCatalogueWorkload = JobSubmission["workload"] & {
+  resources: WorkloadRequest;
+  input: {
+    available: boolean;
+    contentTypes: string[];
+    maxFiles: number;
+    maxBytesPerFile: number;
+    maxTotalBytes: number;
+  };
+  paramsSchema: ParamsSchema;
+};
+
+/** Adapt the coordinator-owned catalogue to the richer presentation model used by the UI. */
+export async function getCatalogue(): Promise<WorkloadDefinition[]> {
+  const { status, body } = await upstream<{ workloads?: CoordinatorCatalogueWorkload[] }>(
+    "/v1/workloads",
+  );
+  if (status !== 200 || !Array.isArray(body.workloads)) raise(status, body);
+
+  return body.workloads.flatMap((entry) => {
+    const presentation = getWorkload(entry.name);
+    if (!presentation) return [];
+
+    return [
+      {
+        ...presentation,
+        id: entry.id,
+        version: entry.version,
+        imageDigest: entry.imageDigest,
+        input: { ...presentation.input, ...entry.input },
+        paramsSchema: entry.paramsSchema,
+        needsDeviceAccess: entry.resources.deviceAccess,
+        accelerator: entry.resources.accelerator === "NVIDIA_CUDA" ? "cuda" : "none",
+        runsRequesterCode: entry.resources.arbitraryImage,
+        allowedNetworkModes: [entry.resources.networkMode],
+        limits: {
+          ...presentation.limits,
+          cpuCores: entry.resources.cpu,
+          memoryBytes: entry.resources.memoryMb * MB,
+          timeoutSeconds: entry.resources.timeoutSeconds,
+          maxOutputBytes: entry.resources.maxOutputBytes,
+        },
+        availability: entry.input.available
+          ? ({ status: "available" } as const)
+          : ({
+              status: "unavailable",
+              reason: "Input artifact transport is not enabled on this coordinator yet.",
+            } as const),
+      },
+    ];
+  });
+}
 
 /* ── Risk explanation (Gemini on the coordinator; advisory only) ────────── */
 

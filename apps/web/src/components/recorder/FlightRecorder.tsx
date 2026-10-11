@@ -294,6 +294,9 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
                       { label: "Memory", value: formatBytes(job.limits.memoryBytes) },
                       { label: "Disk", value: formatMaybeBytes(job.limits.diskBytes) },
                       { label: "Time", value: formatDuration(job.limits.timeoutSeconds) },
+                      ...(job.accelerator === "cuda"
+                        ? [{ label: "Accelerator", value: "1 × NVIDIA CUDA GPU" }]
+                        : []),
                     ]}
                   />
                 )}
@@ -328,7 +331,9 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
                     label: "Runs on",
                     value: job.assignment
                       ? `${job.assignment.nodeLabel} · ${job.assignment.isolation}`
-                      : "Not assigned yet",
+                      : job.resultSummary
+                        ? `${job.resultSummary.gpuName} · provider GPU`
+                        : "Not assigned yet",
                   },
                   ...(role !== "requester"
                     ? [{ label: "Requested by", value: job.requesterLabel }]

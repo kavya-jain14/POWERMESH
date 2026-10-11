@@ -1,11 +1,15 @@
-import { CATALOGUE } from "@/server/coordinator";
+import { errorResponse, getCatalogue } from "@/server/coordinator";
 
 export const dynamic = "force-dynamic";
 
 /**
- * The coordinator has no workload catalogue endpoint yet, so the signed-catalogue fixture is served
- * from here. Submissions still go through the coordinator's own schema and risk policy.
+ * The coordinator owns workload IDs, digests and execution limits. The bridge enriches those records
+ * with presentation-only copy before returning them to the browser.
  */
 export async function GET() {
-  return Response.json(CATALOGUE, { headers: { "Cache-Control": "no-store" } });
+  try {
+    return Response.json(await getCatalogue(), { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    return errorResponse(error);
+  }
 }

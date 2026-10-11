@@ -106,10 +106,19 @@ export function classifyRisk(
   }
 
   // 5. Bounded schemas.
-  const bounded =
+  const hasNoInputs =
+    workload.input.contentTypes.length === 0 &&
+    workload.input.maxFiles === 0 &&
+    workload.input.maxBytesPerFile === 0 &&
+    workload.input.maxTotalBytes === 0;
+  const hasBoundedInputs =
+    workload.input.contentTypes.length > 0 &&
     workload.input.maxFiles > 0 &&
-    workload.input.maxTotalBytes > 0 &&
-    workload.output.contentTypes.length > 0;
+    workload.input.maxBytesPerFile > 0 &&
+    workload.input.maxTotalBytes > 0;
+  const hasBoundedOutput =
+    workload.output.contentTypes.length > 0 && workload.output.maxBytesPerFile > 0;
+  const bounded = (hasNoInputs || hasBoundedInputs) && hasBoundedOutput;
   facts.push(bounded ? fact("BOUNDED_SCHEMAS", "lowers") : fact("UNBOUNDED_SCHEMAS", "raises"));
   if (!bounded) tier = maxTier(tier, "HIGH");
 
