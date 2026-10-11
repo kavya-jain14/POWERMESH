@@ -36,6 +36,8 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
+  if (pathname === "/") return <>{children}</>;
+
   const switchRole = async (next: Role) => {
     setSwitching(true);
     try {
