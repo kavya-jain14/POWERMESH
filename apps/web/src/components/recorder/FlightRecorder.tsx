@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
 import {
   Banner,
   Button,
+  buttonClassName,
   Dialog,
   Digest,
   EmptyState,
@@ -15,20 +14,28 @@ import {
   Skeleton,
   StatusDot,
   Toggle,
-  buttonClassName,
-  useAnnouncer,
   type Tone,
+  useAnnouncer,
 } from "@powermesh/ui";
-import { SCHEDULING, TRANSITIONS, isTerminal, type Role } from "@/contracts-draft/types";
-import { formatBytes, formatDateTime, formatDuration, formatInputs, formatMaybeBytes, formatRelative } from "@/contracts-draft/format";
-import { ApiError, api } from "@/lib/api";
-import { useJobStream, useNow, type StreamStatus } from "@/lib/hooks";
-import { NETWORK_COPY, STATE_COPY, describeJob } from "@/lib/copy";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { JobStateBadge, RiskExplanationView } from "@/components/common/JobBits";
 import { PageHeader } from "@/components/common/PageHeader";
-import { Milestones, Timeline } from "./Timeline";
-import { ResultPanel } from "./ResultPanel";
+import {
+  formatBytes,
+  formatDateTime,
+  formatDuration,
+  formatInputs,
+  formatMaybeBytes,
+  formatRelative,
+} from "@/contracts-draft/format";
+import { isTerminal, type Role, SCHEDULING, TRANSITIONS } from "@/contracts-draft/types";
+import { ApiError, api } from "@/lib/api";
+import { describeJob, NETWORK_COPY, STATE_COPY } from "@/lib/copy";
+import { type StreamStatus, useJobStream, useNow } from "@/lib/hooks";
 import styles from "./Recorder.module.css";
+import { ResultPanel } from "./ResultPanel";
+import { Milestones, Timeline } from "./Timeline";
 
 const STREAM_COPY: Record<StreamStatus, { tone: Tone; label: string; pulse?: boolean }> = {
   connecting: { tone: "neutral", label: "Connecting…" },
@@ -39,7 +46,8 @@ const STREAM_COPY: Record<StreamStatus, { tone: Tone; label: string; pulse?: boo
 };
 
 export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
-  const { job, jobError, events, status, lastMessageAt, reconnectAttempts, refreshJob } = useJobStream(jobId);
+  const { job, jobError, events, status, lastMessageAt, reconnectAttempts, refreshJob } =
+    useJobStream(jobId);
   const { announce } = useAnnouncer();
   const now = useNow(1000);
   const [showLogs, setShowLogs] = useState(true);
@@ -53,8 +61,13 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
     if (!job) return;
     const key = `${job.state}:${job.attempt}`;
     if (lastAnnounced.current && lastAnnounced.current !== key) {
-      const terminalBad = ["FAILED", "REJECTED", "TIMED_OUT", "DECLINED", "EXPIRED"].includes(job.state);
-      announce(`Job ${job.id}: ${STATE_COPY[job.state].badge}. ${describeJob(job, role)}`, terminalBad ? "assertive" : "polite");
+      const terminalBad = ["FAILED", "REJECTED", "TIMED_OUT", "DECLINED", "EXPIRED"].includes(
+        job.state,
+      );
+      announce(
+        `Job ${job.id}: ${STATE_COPY[job.state].badge}. ${describeJob(job, role)}`,
+        terminalBad ? "assertive" : "polite",
+      );
     }
     lastAnnounced.current = key;
   }, [job, role, announce]);
@@ -73,7 +86,15 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
         It may not exist, or it may belong to someone else.
       </EmptyState>
     ) : (
-      <Banner tone="danger" title="We couldn't load this job" action={<Button size="sm" icon="refresh" onClick={() => void refreshJob()}>Try again</Button>}>
+      <Banner
+        tone="danger"
+        title="We couldn't load this job"
+        action={
+          <Button size="sm" icon="refresh" onClick={() => void refreshJob()}>
+            Try again
+          </Button>
+        }
+      >
         {jobError.message}
       </Banner>
     );
@@ -92,7 +113,8 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
 
   const terminal = isTerminal(job.state);
   // Q3: cancel is allowed in every state the contract permits, including while OFFERED.
-  const cancellable = (role === "requester" || role === "admin") && TRANSITIONS[job.state].includes("CANCELLED");
+  const cancellable =
+    (role === "requester" || role === "admin") && TRANSITIONS[job.state].includes("CANCELLED");
   const stream = STREAM_COPY[status];
   const silentFor = lastMessageAt ? Math.round((now - lastMessageAt) / 1000) : 0;
   const tone = STATE_COPY[job.state].tone;
@@ -114,10 +136,17 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
   return (
     <>
       <PageHeader
-        back={{ href: role === "provider" ? "/provider" : "/jobs", label: role === "provider" ? "Provider Console" : role === "admin" ? "All jobs" : "My jobs" }}
+        back={{
+          href: role === "provider" ? "/provider" : "/jobs",
+          label:
+            role === "provider" ? "Provider Console" : role === "admin" ? "All jobs" : "My jobs",
+        }}
         title={
           <>
-            {job.workload.name} <span className="pm-muted pm-mono" style={{ fontSize: "0.7em", fontWeight: 500 }}>{job.id}</span>
+            {job.workload.name}{" "}
+            <span className="pm-muted pm-mono" style={{ fontSize: "0.7em", fontWeight: 500 }}>
+              {job.id}
+            </span>
           </>
         }
         meta={
@@ -131,7 +160,10 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
         }
         actions={
           <>
-            <Link href={`/audit?jobId=${encodeURIComponent(job.id)}`} className={buttonClassName("secondary")}>
+            <Link
+              href={`/audit?jobId=${encodeURIComponent(job.id)}`}
+              className={buttonClassName("secondary")}
+            >
               Audit trail
             </Link>
             {cancellable ? (
@@ -161,15 +193,20 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
         ) : null}
 
         {job.attempt > 1 && !terminal ? (
-          <Banner tone="info" title={`Retrying on another eligible provider — attempt ${job.attempt} of ${job.maxAttempts}`}>
-            The previous provider stopped responding for {SCHEDULING.leaseSeconds + SCHEDULING.leaseGraceSeconds} seconds, so its lease expired. This workload
-            is safe to repeat, so it went back to the queue once.
+          <Banner
+            tone="info"
+            title={`Retrying on another eligible provider — attempt ${job.attempt} of ${job.maxAttempts}`}
+          >
+            The previous provider stopped responding for{" "}
+            {SCHEDULING.leaseSeconds + SCHEDULING.leaseGraceSeconds} seconds, so its lease expired.
+            This workload is safe to repeat, so it went back to the queue once.
           </Banner>
         ) : null}
 
         {job.state === "QUEUED" ? (
           <p className="pm-small pm-muted">
-            Queued jobs wait up to {SCHEDULING.queueTimeoutSeconds / 60} minutes for a compatible provider, then expire. Nothing runs until a provider approves.
+            Queued jobs wait up to {SCHEDULING.queueTimeoutSeconds / 60} minutes for a compatible
+            provider, then expire. Nothing runs until a provider approves.
           </p>
         ) : null}
 
@@ -183,11 +220,24 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
               valueText={`${job.progress.done} of ${job.progress.total}`}
             />
           ) : null}
-          {["SUBMITTED", "POLICY_CHECKED", "QUEUED", "OFFERED", "APPROVED", "CLAIMED", "STAGING", "VALIDATING"].includes(job.state) ? <ProgressBar label="Working" valueText={STATE_COPY[job.state].badge} /> : null}
+          {[
+            "SUBMITTED",
+            "POLICY_CHECKED",
+            "QUEUED",
+            "OFFERED",
+            "APPROVED",
+            "CLAIMED",
+            "STAGING",
+            "VALIDATING",
+          ].includes(job.state) ? (
+            <ProgressBar label="Working" valueText={STATE_COPY[job.state].badge} />
+          ) : null}
           <Milestones events={events} current={job.state} />
         </div>
 
-        {job.state === "SUCCEEDED" || job.artifacts.length > 0 ? <ResultPanel job={job} onRefresh={refreshJob} /> : null}
+        {job.state === "SUCCEEDED" || job.artifacts.length > 0 ? (
+          <ResultPanel job={job} onRefresh={refreshJob} />
+        ) : null}
 
         <div className="pm-grid-2">
           <Panel
@@ -209,10 +259,32 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
               <div className="pm-stack-sm">
                 {job.usage && !terminal ? (
                   <>
-                    <LimitMeter label="CPU" used={job.usage.cpuCores} limit={job.limits.cpuCores} format={(n) => `${n.toFixed(2)} core`} />
-                    <LimitMeter label="Memory" used={job.usage.memoryBytes} limit={job.limits.memoryBytes} format={formatBytes} />
-                    {job.limits.diskBytes != null ? <LimitMeter label="Disk" used={job.usage.diskBytes} limit={job.limits.diskBytes} format={formatBytes} /> : null}
-                    <LimitMeter label="Time" used={job.usage.elapsedSeconds} limit={job.limits.timeoutSeconds} format={formatDuration} />
+                    <LimitMeter
+                      label="CPU"
+                      used={job.usage.cpuCores}
+                      limit={job.limits.cpuCores}
+                      format={(n) => `${n.toFixed(2)} core`}
+                    />
+                    <LimitMeter
+                      label="Memory"
+                      used={job.usage.memoryBytes}
+                      limit={job.limits.memoryBytes}
+                      format={formatBytes}
+                    />
+                    {job.limits.diskBytes != null ? (
+                      <LimitMeter
+                        label="Disk"
+                        used={job.usage.diskBytes}
+                        limit={job.limits.diskBytes}
+                        format={formatBytes}
+                      />
+                    ) : null}
+                    <LimitMeter
+                      label="Time"
+                      used={job.usage.elapsedSeconds}
+                      limit={job.limits.timeoutSeconds}
+                      format={formatDuration}
+                    />
                   </>
                 ) : (
                   <KeyValue
@@ -222,6 +294,9 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
                       { label: "Memory", value: formatBytes(job.limits.memoryBytes) },
                       { label: "Disk", value: formatMaybeBytes(job.limits.diskBytes) },
                       { label: "Time", value: formatDuration(job.limits.timeoutSeconds) },
+                      ...(job.accelerator === "cuda"
+                        ? [{ label: "Accelerator", value: "1 × NVIDIA CUDA GPU" }]
+                        : []),
                     ]}
                   />
                 )}
@@ -232,18 +307,37 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
               <KeyValue
                 items={[
                   { label: "Workload", value: `${job.workload.name} v${job.workload.version}` },
-                  { label: "Workload digest", value: <Digest value={job.workload.digest} label="workload digest" /> },
+                  {
+                    label: "Workload digest",
+                    value: <Digest value={job.workload.digest} label="workload digest" />,
+                  },
                   {
                     label: "Inputs",
                     value: formatInputs(job.inputs),
                   },
-                  { label: "Input digest", value: job.inputDigest ? <Digest value={job.inputDigest} label="input digest" /> : "None sent" },
-                  { label: "Network", value: `${NETWORK_COPY[job.networkMode].label} — ${NETWORK_COPY[job.networkMode].short}` },
+                  {
+                    label: "Input digest",
+                    value: job.inputDigest ? (
+                      <Digest value={job.inputDigest} label="input digest" />
+                    ) : (
+                      "None sent"
+                    ),
+                  },
+                  {
+                    label: "Network",
+                    value: `${NETWORK_COPY[job.networkMode].label} — ${NETWORK_COPY[job.networkMode].short}`,
+                  },
                   {
                     label: "Runs on",
-                    value: job.assignment ? `${job.assignment.nodeLabel} · ${job.assignment.isolation}` : "Not assigned yet",
+                    value: job.assignment
+                      ? `${job.assignment.nodeLabel} · ${job.assignment.isolation}`
+                      : job.resultSummary
+                        ? `${job.resultSummary.gpuName} · provider GPU`
+                        : "Not assigned yet",
                   },
-                  ...(role !== "requester" ? [{ label: "Requested by", value: job.requesterLabel }] : []),
+                  ...(role !== "requester"
+                    ? [{ label: "Requested by", value: job.requesterLabel }]
+                    : []),
                   { label: "Last update", value: formatRelative(job.updatedAt, now) },
                 ]}
               />
@@ -268,10 +362,19 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
         }
         footer={
           <>
-            <Button variant="secondary" onClick={() => setConfirmCancel(false)} disabled={cancelling}>
+            <Button
+              variant="secondary"
+              onClick={() => setConfirmCancel(false)}
+              disabled={cancelling}
+            >
               Keep running
             </Button>
-            <Button variant="danger" icon="stop" loading={cancelling} onClick={() => void doCancel()}>
+            <Button
+              variant="danger"
+              icon="stop"
+              loading={cancelling}
+              onClick={() => void doCancel()}
+            >
               Cancel job
             </Button>
           </>

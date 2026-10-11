@@ -57,12 +57,13 @@ export interface CoordinatorJob {
   requesterId: string;
   workload: JobSubmission["workload"];
   resources: WorkloadRequest;
-  params: Record<string, string>;
+  params: JobSubmission["params"];
   inputDigests: string[];
   riskTier: RiskTier;
   state: CoordinatorJobState;
   createdAt: string;
   updatedAt: string;
+  resultSummary?: Job["resultSummary"];
 }
 
 export const COORDINATOR_TERMINAL: readonly CoordinatorJobState[] = [
@@ -341,6 +342,8 @@ async function toView(job: CoordinatorJob): Promise<Job> {
     inputDigest: job.inputDigests[0],
     risk: explain({ ...decision, tier: job.riskTier }, job.createdAt),
     networkMode: job.resources.networkMode,
+    accelerator: job.resources.accelerator === "NVIDIA_CUDA" ? "cuda" : "none",
+    resultSummary: job.resultSummary,
     limits: {
       cpuCores: job.resources.cpu,
       memoryBytes: job.resources.memoryMb * MB,
@@ -419,7 +422,7 @@ export async function submitJob(req: SubmitJobRequest): Promise<Job> {
   const { summary, digests } = inputsFor(req);
   const candidate = {
     workloadId: req.workloadId,
-    params: Object.fromEntries(Object.entries(req.params).map(([k, v]) => [k, String(v)])),
+    params: req.params,
     inputDigests: digests,
   };
 
@@ -507,6 +510,7 @@ export async function getCatalogue(): Promise<WorkloadDefinition[]> {
         input: { ...presentation.input, ...entry.input },
         paramsSchema: entry.paramsSchema,
         needsDeviceAccess: entry.resources.deviceAccess,
+        accelerator: entry.resources.accelerator === "NVIDIA_CUDA" ? "cuda" : "none",
         runsRequesterCode: entry.resources.arbitraryImage,
         allowedNetworkModes: [entry.resources.networkMode],
         limits: {
@@ -526,4 +530,3 @@ export async function getCatalogue(): Promise<WorkloadDefinition[]> {
     ];
   });
 }
-

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { networkModeSchema, workloadRequestSchema } from "./schemas";
+import { acceleratorCapabilitySchema, networkModeSchema, workloadRequestSchema } from "./schemas";
 
 export const nodeStatuses = ["OFFLINE", "ONLINE", "BUSY", "DRAINING"] as const;
 export const isolationLevels = ["CONTAINER_BASELINE", "GVISOR", "MICROVM"] as const;
@@ -62,12 +62,14 @@ export const providerRegistrationSchema = z.object({
   memoryMb: z.number().int().positive().max(2_097_152),
   networkModes: z.array(networkModeSchema).min(1),
   isolationLevels: z.array(z.enum(isolationLevels)).min(1),
+  accelerators: z.array(acceleratorCapabilitySchema).max(16).optional(),
 });
 
 export const providerHeartbeatSchema = z.object({
   availableCpu: z.number().int().nonnegative().max(256),
   availableMemoryMb: z.number().int().nonnegative().max(2_097_152),
   activeJobs: z.number().int().nonnegative().max(1_000),
+  availableGpuCount: z.number().int().nonnegative().max(16).optional(),
   status: z.enum(["ONLINE", "BUSY", "DRAINING"]),
 });
 

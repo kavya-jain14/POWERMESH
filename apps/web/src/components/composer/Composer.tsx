@@ -76,6 +76,7 @@ export function Composer() {
   const summaryRef = useRef<HTMLDivElement>(null);
 
   const workload: WorkloadDefinition | undefined = workloads.data?.find((w) => w.id === workloadId);
+  const hasInputs = Boolean(workload && workload.input.maxFiles > 0);
 
   useEffect(() => {
     if (workloads.data?.length && !workloads.data.some((entry) => entry.id === workloadId)) {
@@ -90,14 +91,6 @@ export function Composer() {
     return params[key] ?? (spec ? String(spec.default) : "");
   };
 
-  const files: InputFileMeta[] = useMemo(
-    () =>
-      source === "sample"
-        ? SAMPLE_SET.files.map((f) => ({ name: f.name, contentType: "image/png", bytes: 0 }))
-        : uploads,
-    [source, uploads],
-  );
-
   // Client-side checks are a convenience only; the coordinator and Agent re-validate everything.
   const errors: Errors = useMemo(() => {
     const e: Errors = {};
@@ -106,7 +99,7 @@ export function Composer() {
       return e;
     }
     const schema = workload.input;
-    if (source === "upload") {
+    if (hasInputs && source === "upload") {
       if (uploads.length === 0) e.inputs = "Add at least one image.";
       else if (uploads.length > schema.maxFiles)
         e.inputs = `Up to ${schema.maxFiles} images per job — remove ${uploads.length - schema.maxFiles}.`;
@@ -135,7 +128,7 @@ export function Composer() {
       e.network = "This workload only runs offline.";
     return e;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workload, specs, source, uploads, params, network]);
+  }, [workload, hasInputs, specs, source, uploads, params, network]);
 
   const risk = useMemo(
     () => (workload ? classifyRisk(workload, network) : null),
@@ -174,8 +167,8 @@ export function Composer() {
         workloadId: workload.id,
         params: typed,
         networkMode: network,
-        inputs: source === "upload" ? uploads : [],
-        sampleSet: source === "sample" ? SAMPLE_SET.id : undefined,
+        inputs: hasInputs && source === "upload" ? uploads : [],
+        sampleSet: hasInputs && source === "sample" ? SAMPLE_SET.id : undefined,
       });
       announce(`Job ${job.id} submitted. Checking policy.`);
       router.push(`/jobs/${job.id}`);
@@ -304,86 +297,96 @@ export function Composer() {
               id="section-inputs"
               eyebrow="Step 2"
               title="Inputs"
-              description={`${workload.input.contentTypes.map(contentTypeLabel).join(", ")} · up to ${workload.input.maxFiles} images, ${formatBytes(workload.input.maxBytesPerFile)} each.`}
+              description={
+                hasInputs
+                  ? `${workload.input.contentTypes.map(contentTypeLabel).join(", ")} · up to ${workload.input.maxFiles} images, ${formatBytes(workload.input.maxBytesPerFile)} each.`
+                  : "No files or requester code are sent to this workload."
+              }
             >
-              <div className="pm-stack-sm">
-                <ChoiceGroup<InputSource>
-                  legend="Images to transform"
-                  name="source"
-                  value={source}
-                  onChange={(v) => {
-                    setSource(v);
-                    setServerErrors({});
-                  }}
-                  options={[
-                    {
-                      value: "sample",
-                      label: "Demo sample set",
-                      description: "3 abstract images, safe to share. Works without internet.",
-                    },
-                    {
-                      value: "upload",
-                      label: "Upload images",
-                      description: "Your own PNG, JPEG or WebP files.",
-                    },
-                  ]}
-                />
-                {source === "sample" ? (
-                  <ul role="list" className={styles.thumbs}>
-                    {SAMPLE_SET.files.map((f) => (
-                      <li key={f.name}>
-                        {/* Static, bundled raster samples only — never untrusted content. */}
-                        <img src={f.src} alt="" width={160} height={107} loading="lazy" />
-                        <span className="pm-small pm-mono">{f.name}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="pm-stack-sm">
-                    <Field
-                      label="Choose images"
-                      hint={
-                        IS_LIVE
-                          ? "Only file names, types and sizes are sent — the coordinator has no upload storage yet, so it receives no input digests for your own files."
-                          : USES_SIMULATOR
-                            ? "Offline demo: only file names, types and sizes are sent — outputs use the demo images. These checks are early feedback, not a security guarantee — the server validates again."
-                            : "Files are uploaded to scoped, short-lived storage and staged read-only for the job."
-                      }
-                      error={showErrors ? allErrors.inputs : undefined}
-                    >
-                      <input
-                        type="file"
-                        multiple
-                        accept={workload.input.contentTypes.join(",")}
-                        onChange={onUpload}
-                        className={styles.file}
-                      />
-                    </Field>
-                    {uploads.length > 0 ? (
-                      <ul role="list" className={styles.fileList}>
-                        {uploads.map((f) => {
-                          const ok =
-                            workload.input.contentTypes.includes(f.contentType) &&
-                            f.bytes <= workload.input.maxBytesPerFile;
-                          return (
-                            <li key={f.name} className={ok ? undefined : styles.fileBad}>
-                              <Icon name={ok ? "image" : "alert"} />
-                              <span className="pm-mono">{f.name}</span>
-                              <span className="pm-muted">
-                                {contentTypeLabel(f.contentType)} · {formatBytes(f.bytes)}
-                              </span>
-                            </li>
-                          );
-                        })}
-                        <li className="pm-muted pm-small">
-                          {uploads.length} file{uploads.length === 1 ? "" : "s"} ·{" "}
-                          {formatBytes(totalUpload)} total
+              {hasInputs ? (
+                <div className="pm-stack-sm">
+                  <ChoiceGroup<InputSource>
+                    legend="Images to transform"
+                    name="source"
+                    value={source}
+                    onChange={(v) => {
+                      setSource(v);
+                      setServerErrors({});
+                    }}
+                    options={[
+                      {
+                        value: "sample",
+                        label: "Demo sample set",
+                        description: "3 abstract images, safe to share. Works without internet.",
+                      },
+                      {
+                        value: "upload",
+                        label: "Upload images",
+                        description: "Your own PNG, JPEG or WebP files.",
+                      },
+                    ]}
+                  />
+                  {source === "sample" ? (
+                    <ul role="list" className={styles.thumbs}>
+                      {SAMPLE_SET.files.map((f) => (
+                        <li key={f.name}>
+                          {/* Static, bundled raster samples only — never untrusted content. */}
+                          <img src={f.src} alt="" width={160} height={107} loading="lazy" />
+                          <span className="pm-small pm-mono">{f.name}</span>
                         </li>
-                      </ul>
-                    ) : null}
-                  </div>
-                )}
-              </div>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="pm-stack-sm">
+                      <Field
+                        label="Choose images"
+                        hint={
+                          IS_LIVE
+                            ? "Only file names, types and sizes are sent — the coordinator has no upload storage yet, so it receives no input digests for your own files."
+                            : USES_SIMULATOR
+                              ? "Offline demo: only file names, types and sizes are sent — outputs use the demo images. These checks are early feedback, not a security guarantee — the server validates again."
+                              : "Files are uploaded to scoped, short-lived storage and staged read-only for the job."
+                        }
+                        error={showErrors ? allErrors.inputs : undefined}
+                      >
+                        <input
+                          type="file"
+                          multiple
+                          accept={workload.input.contentTypes.join(",")}
+                          onChange={onUpload}
+                          className={styles.file}
+                        />
+                      </Field>
+                      {uploads.length > 0 ? (
+                        <ul role="list" className={styles.fileList}>
+                          {uploads.map((f) => {
+                            const ok =
+                              workload.input.contentTypes.includes(f.contentType) &&
+                              f.bytes <= workload.input.maxBytesPerFile;
+                            return (
+                              <li key={f.name} className={ok ? undefined : styles.fileBad}>
+                                <Icon name={ok ? "image" : "alert"} />
+                                <span className="pm-mono">{f.name}</span>
+                                <span className="pm-muted">
+                                  {contentTypeLabel(f.contentType)} · {formatBytes(f.bytes)}
+                                </span>
+                              </li>
+                            );
+                          })}
+                          <li className="pm-muted pm-small">
+                            {uploads.length} file{uploads.length === 1 ? "" : "s"} ·{" "}
+                            {formatBytes(totalUpload)} total
+                          </li>
+                        </ul>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Banner tone="info" title="Hardware-only verification">
+                  The provider runs the fixed benchmark image and returns only validated GPU facts.
+                </Banner>
+              )}
             </Panel>
 
             {specs.length > 0 ? (
@@ -448,6 +451,10 @@ export function Composer() {
                       { label: "Time", value: formatDuration(workload.limits.timeoutSeconds) },
                       { label: "Processes", value: workload.limits.pidLimit ?? "Not reported" },
                       {
+                        label: "Accelerator",
+                        value: workload.accelerator === "cuda" ? "1 × NVIDIA CUDA GPU" : "None",
+                      },
+                      {
                         label: "Isolation",
                         value:
                           workload.minimumIsolation === "docker-rootless"
@@ -500,11 +507,15 @@ export function Composer() {
                     { label: "Workload", value: `${workload.name} v${workload.version}` },
                     {
                       label: "Inputs",
-                      value:
-                        source === "sample"
+                      value: !hasInputs
+                        ? "None — fixed benchmark"
+                        : source === "sample"
                           ? "Demo sample set · 3 PNG images"
                           : `${uploads.length} image${uploads.length === 1 ? "" : "s"} · ${formatBytes(totalUpload)}`,
                     },
+                    ...(workload.accelerator === "cuda"
+                      ? [{ label: "Hardware", value: "NVIDIA CUDA GPU required" }]
+                      : []),
                     { label: "Network", value: NETWORK_COPY[network].label },
                   ]}
                 />

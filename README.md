@@ -102,6 +102,24 @@ approves according to local policy, claims once, executes, validates output magi
 only sizes and SHA-256 digests. `POWERMESH_AUTO_APPROVE_LOW_RISK=true` is an explicit demo-only local
 policy choice; it never enables medium- or high-risk auto-approval.
 
+## Windows NVIDIA proof
+
+The GPU demo is a real cross-device path: a requester submits the fixed `gpu-benchmark` catalogue
+workload, the coordinator matches a live CUDA-capable node, and the provider Agent launches the
+digest-pinned container with only the selected NVIDIA device. The validated result contains the
+actual GPU model, CUDA runtime, compute capability, matrix dimensions, kernel duration and checksum.
+
+On Windows the Agent runs inside WSL2 and Docker Desktop supplies NVIDIA GPU passthrough. This
+development profile is enabled explicitly with `POWERMESH_ALLOW_DESKTOP_SANDBOX=true` and is never
+reported as rootless isolation. Follow [`docs/demo/windows-gpu-demo.md`](docs/demo/windows-gpu-demo.md)
+for the two-laptop runbook.
+
+Build the CUDA workload locally with:
+
+```bash
+pnpm workload:gpu:build
+```
+
 ## Web app (Gargi)
 
 `apps/web` covers the six surfaces in master plan §6: Job Composer, Flight Recorder, Provider Console,

@@ -14,12 +14,13 @@ import type {
   ApiErrorCode,
   Artifact as ContractArtifact,
   AuditEventType as ContractAuditEventType,
+  GpuBenchmarkResult as ContractGpuBenchmarkResult,
   IsolationCapability as ContractIsolationCapability,
   IsolationLevel as ContractIsolationLevel,
   NetworkHealth as ContractNetworkHealth,
   ProviderPolicy as ContractProviderPolicy,
-  ProviderNodeStatus,
   TerminalReasonCode as ContractTerminalReasonCode,
+  ProviderNodeStatus,
 } from "@powermesh/contracts";
 import { protocolTiming } from "@powermesh/contracts";
 
@@ -49,7 +50,15 @@ export const JOB_STATES = [
 
 export type JobState = (typeof JOB_STATES)[number];
 
-export const TERMINAL_STATES: readonly JobState[] = ["SUCCEEDED", "FAILED", "CANCELLED", "REJECTED", "EXPIRED", "DECLINED", "TIMED_OUT"];
+export const TERMINAL_STATES: readonly JobState[] = [
+  "SUCCEEDED",
+  "FAILED",
+  "CANCELLED",
+  "REJECTED",
+  "EXPIRED",
+  "DECLINED",
+  "TIMED_OUT",
+];
 
 /**
  * Master plan §3, plus: OFFERED → CANCELLED (Q3), QUEUED → EXPIRED with QUEUE_TIMEOUT (Q2), and the
@@ -180,7 +189,16 @@ export interface ResourceLimits {
 
 export type ParamSchema =
   | { type: "string"; enum: string[]; default?: string; title: string; description?: string }
-  | { type: "integer"; minimum: number; maximum: number; multipleOf?: number; default?: number; title: string; description?: string; "x-unit"?: string };
+  | {
+      type: "integer";
+      minimum: number;
+      maximum: number;
+      multipleOf?: number;
+      default?: number;
+      title: string;
+      description?: string;
+      "x-unit"?: string;
+    };
 
 export interface ParamsSchema {
   type: "object";
@@ -202,7 +220,13 @@ export interface WorkloadDefinition {
   runsRequesterCode: boolean;
   needsSecrets: boolean;
   needsDeviceAccess: boolean;
-  input: { contentTypes: string[]; maxFiles: number; maxBytesPerFile: number; maxTotalBytes: number };
+  accelerator?: Accelerator;
+  input: {
+    contentTypes: string[];
+    maxFiles: number;
+    maxBytesPerFile: number;
+    maxTotalBytes: number;
+  };
   output: { contentTypes: string[]; maxBytesPerFile: number };
   paramsSchema: ParamsSchema;
   allowedNetworkModes: NetworkMode[];
@@ -222,8 +246,25 @@ export function hasValidDigest(workload: Pick<WorkloadDefinition, "imageDigest">
 
 /** A form field derived from one `paramsSchema` property. */
 export type ParamSpec =
-  | { key: string; label: string; type: "enum"; options: Array<{ value: string; label: string }>; default: string; hint?: string }
-  | { key: string; label: string; type: "int"; min: number; max: number; step?: number; default: number; unit?: string; hint?: string };
+  | {
+      key: string;
+      label: string;
+      type: "enum";
+      options: Array<{ value: string; label: string }>;
+      default: string;
+      hint?: string;
+    }
+  | {
+      key: string;
+      label: string;
+      type: "int";
+      min: number;
+      max: number;
+      step?: number;
+      default: number;
+      unit?: string;
+      hint?: string;
+    };
 
 /**
  * Q28: controls come from the schema's title, description and x-unit. Enum values have no display labels
@@ -243,7 +284,17 @@ export function paramSpecs(schema: ParamsSchema): ParamSpec[] {
         hint: p.description,
       };
     }
-    return { key, label: p.title, type: "int", min: p.minimum, max: p.maximum, step: p.multipleOf, default: p.default ?? p.minimum, unit: p["x-unit"], hint: p.description };
+    return {
+      key,
+      label: p.title,
+      type: "int",
+      min: p.minimum,
+      max: p.maximum,
+      step: p.multipleOf,
+      default: p.default ?? p.minimum,
+      unit: p["x-unit"],
+      hint: p.description,
+    };
   });
 }
 
@@ -300,11 +351,20 @@ export interface Job {
   params: Record<string, string | number | boolean>;
   limits: ResourceLimits;
   networkMode: NetworkMode;
+  accelerator?: Accelerator;
+  resultSummary?: ContractGpuBenchmarkResult;
   risk: RiskExplanation;
   attempt: 1 | 2;
   maxAttempts: 2;
   /** Requesters get coarse os/architecture and a generic label; nodeId is absent (Q24). */
-  assignment: null | { nodeId?: string; nodeLabel: string; os: string; architecture: string; isolation: IsolationLevel; leaseUntil: string };
+  assignment: null | {
+    nodeId?: string;
+    nodeLabel: string;
+    os: string;
+    architecture: string;
+    isolation: IsolationLevel;
+    leaseUntil: string;
+  };
   progress: null | { done: number; total: number; unit?: string };
   usage: null | ResourceUsage;
   artifacts: Artifact[];
@@ -316,7 +376,11 @@ export interface Job {
 }
 
 /** Q22: Agent stop events. "Stopped by you" is anchored to PROCESS_KILLED; cleanup is measured separately. */
-export type AgentStopEvent = "NETWORK_REVOKED" | "TERMINATION_REQUESTED" | "PROCESS_KILLED" | "WORKSPACE_CLEANED";
+export type AgentStopEvent =
+  | "NETWORK_REVOKED"
+  | "TERMINATION_REQUESTED"
+  | "PROCESS_KILLED"
+  | "WORKSPACE_CLEANED";
 
 export type JobEventType = "state" | "progress" | "log";
 
@@ -378,7 +442,15 @@ export type OfferStatus = "pending" | "approved" | "auto_approved" | "declined" 
 export interface Offer {
   id: string;
   jobId: string;
-  workload: { id: string; name: string; version: string; digest: string; signatureVerified: boolean; publisher: string; summary: string };
+  workload: {
+    id: string;
+    name: string;
+    version: string;
+    digest: string;
+    signatureVerified: boolean;
+    publisher: string;
+    summary: string;
+  };
   /** No filenames — the provider sees counts, types and sizes only (Q25). */
   inputs: Omit<InputSummary, "files">;
   params: Record<string, string | number | boolean>;
@@ -410,7 +482,11 @@ export interface AgentLocalState {
   /** Most recent job this node stopped or finished, for the "stopped" state. */
   lastJob: Job | null;
   /** Q22 stop events for an in-flight or just-finished local stop. */
-  stop: { jobId: string; requestedAt: string; steps: Array<{ step: AgentStopEvent; at: string }> } | null;
+  stop: {
+    jobId: string;
+    requestedAt: string;
+    steps: Array<{ step: AgentStopEvent; at: string }>;
+  } | null;
 }
 
 /* ── Control room / audit (Q15–Q17) ────────────────────────────────────── */

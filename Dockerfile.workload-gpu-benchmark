@@ -1,0 +1,16 @@
+FROM nvidia/cuda:12.8.1-devel-ubuntu24.04 AS build
+
+WORKDIR /src
+COPY workloads/gpu-benchmark/benchmark.cu ./benchmark.cu
+RUN nvcc -O3 --use_fast_math -Xcompiler=-fPIE -Xlinker=-pie \
+  -o /gpu-benchmark benchmark.cu
+
+FROM nvidia/cuda:12.8.1-runtime-ubuntu24.04 AS runtime
+
+RUN apt-get update \
+  && apt-get upgrade --yes \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /gpu-benchmark /usr/local/bin/gpu-benchmark
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/gpu-benchmark"]

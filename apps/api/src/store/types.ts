@@ -1,4 +1,5 @@
 import type {
+  ExecutionCompletion,
   JobState,
   JobSubmission,
   ProviderHeartbeat,
@@ -20,12 +21,14 @@ export interface JobRecord {
   state: JobState;
   createdAt: string;
   updatedAt: string;
+  resultSummary?: ExecutionCompletion["resultSummary"];
 }
 
 export interface ProviderNodeRecord extends ProviderRegistration {
   id: string;
   availableCpu: number;
   availableMemoryMb: number;
+  availableGpuCount: number;
   activeJobs: number;
   status: "OFFLINE" | "ONLINE" | "BUSY" | "DRAINING";
   lastHeartbeatAt: string | null;
@@ -64,6 +67,13 @@ export function providerCanRunJob(
   if (node.status !== "ONLINE") return "NODE_UNAVAILABLE";
   if (node.availableCpu < job.resources.cpu || node.availableMemoryMb < job.resources.memoryMb) {
     return "NODE_UNAVAILABLE";
+  }
+  if (job.resources.accelerator === "NVIDIA_CUDA") {
+    const compatible = (node.accelerators ?? []).filter(
+      (accelerator) => accelerator.kind === "NVIDIA_CUDA",
+    );
+    if (compatible.length < (job.resources.gpuCount ?? 1)) return "CAPABILITY_MISMATCH";
+    if (node.availableGpuCount < (job.resources.gpuCount ?? 1)) return "NODE_UNAVAILABLE";
   }
   if (!node.networkModes.includes(job.resources.networkMode)) return "CAPABILITY_MISMATCH";
   if (job.riskTier === "MEDIUM" && !node.isolationLevels.includes("GVISOR")) {
@@ -113,5 +123,10 @@ export interface CoordinatorStore {
     actor: string,
     correlationId: string,
     safePayload?: Record<string, unknown>,
+  ): Promise<StoreResult<JobRecord>>;
+  saveResultSummary(
+    jobId: string,
+    nodeId: string,
+    summary: NonNullable<ExecutionCompletion["resultSummary"]>,
   ): Promise<StoreResult<JobRecord>>;
 }

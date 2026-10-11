@@ -15,15 +15,16 @@ const capability: ProviderCapability = {
   architecture: os.arch(),
   cpuCores: os.cpus().length,
   memoryMb: Math.floor(os.totalmem() / 1024 / 1024),
-  networkModes: runtime.dockerAvailable && runtime.rootless ? ["OFFLINE"] : [],
+  networkModes: runtime.dockerAvailable && runtime.canExecute ? ["OFFLINE"] : [],
   isolationLevels: runtime.isolationLevels,
+  accelerators: runtime.accelerators,
 };
 
 process.stdout.write(`${JSON.stringify({ event: "AGENT_READY", capability, runtime }, null, 2)}\n`);
 
 const endpoint = process.env.POWERMESH_COORDINATOR_URL;
 const nodeId = process.env.POWERMESH_NODE_ID;
-if (endpoint && nodeId && runtime.dockerAvailable && runtime.rootless) {
+if (endpoint && nodeId && runtime.dockerAvailable && runtime.canExecute) {
   const trust = new AgentTrustStore(new SystemCredentialStore());
   const enrolled = await loadAgentTrust(endpoint, trust);
   const executor = new SandboxExecutor();
@@ -41,6 +42,7 @@ if (endpoint && nodeId && runtime.dockerAvailable && runtime.rootless) {
     heartbeat: () => ({
       availableCpu: Math.max(0, capability.cpuCores - loop.activeJobCount()),
       availableMemoryMb: Math.max(0, capability.memoryMb - loop.activeJobCount() * 512),
+      availableGpuCount: Math.max(0, runtime.accelerators.length - loop.activeJobCount()),
       activeJobs: loop.activeJobCount(),
       status: loop.activeJobCount() > 0 ? "BUSY" : "ONLINE",
     }),

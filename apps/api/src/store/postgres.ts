@@ -30,6 +30,9 @@ interface JobRow {
   max_output_bytes: number;
   network_mode: JobRecord["resources"]["networkMode"];
   allowed_hosts: string[];
+  accelerator: JobRecord["resources"]["accelerator"] | null;
+  requested_gpu_count: number;
+  result_summary: JobRecord["resultSummary"] | null;
   risk_tier: JobRecord["riskTier"];
   state: JobRecord["state"];
   created_at: Date;
@@ -47,8 +50,10 @@ interface NodeRow {
   memory_mb: number;
   network_modes: ProviderNodeRecord["networkModes"];
   isolation_levels: ProviderNodeRecord["isolationLevels"];
+  accelerators: NonNullable<ProviderNodeRecord["accelerators"]>;
   available_cpu: number;
   available_memory_mb: number;
+  available_gpu_count: number;
   active_jobs: number;
   status: ProviderNodeRecord["status"];
   last_heartbeat_at: Date | null;
@@ -59,6 +64,7 @@ interface NodeRow {
 interface EffectiveNodeRow extends NodeRow {
   effective_available_cpu: number;
   effective_available_memory_mb: number;
+  effective_available_gpu_count: number;
   effective_active_jobs: number;
 }
 
@@ -122,6 +128,8 @@ function mapJob(row: JobRow): JobRecord {
       dockerSocket: false,
       deviceAccess: false,
       arbitraryImage: false,
+      accelerator: row.accelerator ?? undefined,
+      gpuCount: row.requested_gpu_count,
     },
     params: row.params,
     inputDigests: row.input_digests,
@@ -129,6 +137,7 @@ function mapJob(row: JobRow): JobRecord {
     state: row.state,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
+    resultSummary: row.result_summary ?? undefined,
   };
 }
 
@@ -144,8 +153,10 @@ function mapNode(row: NodeRow): ProviderNodeRecord {
     memoryMb: row.memory_mb,
     networkModes: row.network_modes,
     isolationLevels: row.isolation_levels,
+    accelerators: row.accelerators,
     availableCpu: row.available_cpu,
     availableMemoryMb: row.available_memory_mb,
+    availableGpuCount: row.available_gpu_count,
     activeJobs: row.active_jobs,
     status: row.status,
     lastHeartbeatAt: row.last_heartbeat_at?.toISOString() ?? null,
@@ -281,8 +292,8 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
         `INSERT INTO jobs (
           id, requester_id, workload_id, params, input_digests, requested_cpu,
           requested_memory_mb, timeout_seconds, max_output_bytes, network_mode, allowed_hosts,
-          risk_tier, state
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'POLICY_CHECKED')`,
+          accelerator, requested_gpu_count, risk_tier, state
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'POLICY_CHECKED')`,
         [
           jobId,
           input.requesterId,
@@ -295,6 +306,8 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
           input.resources.maxOutputBytes,
           input.resources.networkMode,
           JSON.stringify(input.resources.allowedHosts),
+          input.resources.accelerator ?? null,
+          input.resources.gpuCount ?? 0,
           risk.tier,
         ],
       );
@@ -419,8 +432,8 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
     const result = await this.pool.query<NodeRow>(
       `INSERT INTO provider_nodes (
         id, owner_id, node_name, os, architecture, agent_version, cpu_cores,
-        memory_mb, network_modes, isolation_levels, agent_token_hash
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        memory_mb, network_modes, isolation_levels, accelerators, agent_token_hash
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       ON CONFLICT (owner_id, node_name) DO UPDATE SET
         os = EXCLUDED.os,
         architecture = EXCLUDED.architecture,
@@ -429,10 +442,11 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
         memory_mb = EXCLUDED.memory_mb,
         network_modes = EXCLUDED.network_modes,
         isolation_levels = EXCLUDED.isolation_levels,
+        accelerators = EXCLUDED.accelerators,
         agent_token_hash = EXCLUDED.agent_token_hash,
         updated_at = NOW()
       WHERE provider_nodes.agent_token_hash IS NULL
-        OR provider_nodes.agent_token_hash = $12
+        OR provider_nodes.agent_token_hash = $13
       RETURNING *`,
       [
         randomUUID(),
@@ -445,6 +459,7 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
         input.memoryMb,
         JSON.stringify(input.networkModes),
         JSON.stringify(input.isolationLevels),
+        JSON.stringify(input.accelerators ?? []),
         newTokenHash,
         currentTokenHash ?? null,
       ],
@@ -480,6 +495,10 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
            provider_nodes.available_memory_mb - COALESCE(reservations.memory_mb, 0)
          ) AS effective_available_memory_mb,
          GREATEST(
+           0,
+           provider_nodes.available_gpu_count - COALESCE(reservations.gpu_count, 0)
+         ) AS effective_available_gpu_count,
+         GREATEST(
            provider_nodes.active_jobs,
            COALESCE(reservations.jobs, 0)
          ) AS effective_active_jobs
@@ -488,6 +507,7 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
          SELECT assignments.node_id,
            SUM(jobs.requested_cpu)::INTEGER AS cpu,
            SUM(jobs.requested_memory_mb)::INTEGER AS memory_mb,
+           SUM(jobs.requested_gpu_count)::INTEGER AS gpu_count,
            COUNT(*)::INTEGER AS jobs
          FROM assignments
          JOIN jobs ON jobs.id = assignments.job_id
@@ -502,6 +522,7 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
         ...row,
         available_cpu: row.effective_available_cpu,
         available_memory_mb: row.effective_available_memory_mb,
+        available_gpu_count: row.effective_available_gpu_count,
         active_jobs: row.effective_active_jobs,
       }),
     );
@@ -515,8 +536,9 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
       `UPDATE provider_nodes SET
         available_cpu = $2,
         available_memory_mb = $3,
-        active_jobs = $4,
-        status = $5,
+        available_gpu_count = $4,
+        active_jobs = $5,
+        status = $6,
         last_heartbeat_at = NOW(),
         updated_at = NOW()
       WHERE id = $1
@@ -525,6 +547,7 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
         id,
         heartbeat.availableCpu,
         heartbeat.availableMemoryMb,
+        heartbeat.availableGpuCount ?? 0,
         heartbeat.activeJobs,
         heartbeat.status,
       ],
@@ -558,10 +581,12 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
       const reservationResult = await client.query<{
         cpu: number;
         memory_mb: number;
+        gpu_count: number;
         jobs: number;
       }>(
         `SELECT COALESCE(SUM(jobs.requested_cpu), 0)::INTEGER AS cpu,
            COALESCE(SUM(jobs.requested_memory_mb), 0)::INTEGER AS memory_mb,
+           COALESCE(SUM(jobs.requested_gpu_count), 0)::INTEGER AS gpu_count,
            COUNT(*)::INTEGER AS jobs
          FROM assignments
          JOIN jobs ON jobs.id = assignments.job_id
@@ -569,12 +594,18 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
            AND jobs.state IN ('OFFERED', 'APPROVED', 'CLAIMED', 'RUNNING', 'VALIDATING')`,
         [offer.manifest.nodeId],
       );
-      const reservation = reservationResult.rows[0] ?? { cpu: 0, memory_mb: 0, jobs: 0 };
+      const reservation = reservationResult.rows[0] ?? {
+        cpu: 0,
+        memory_mb: 0,
+        gpu_count: 0,
+        jobs: 0,
+      };
       const node = mapNode(nodeRow);
       const effectiveNode: ProviderNodeRecord = {
         ...node,
         availableCpu: Math.max(0, node.availableCpu - reservation.cpu),
         availableMemoryMb: Math.max(0, node.availableMemoryMb - reservation.memory_mb),
+        availableGpuCount: Math.max(0, node.availableGpuCount - reservation.gpu_count),
         activeJobs: Math.max(node.activeJobs, reservation.jobs),
       };
 
@@ -867,5 +898,30 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
     } finally {
       client.release();
     }
+  }
+
+  async saveResultSummary(
+    jobId: string,
+    nodeId: string,
+    summary: Parameters<CoordinatorStore["saveResultSummary"]>[2],
+  ): Promise<StoreResult<JobRecord>> {
+    const result = await this.pool.query(
+      `UPDATE jobs
+       SET result_summary = $3, updated_at = NOW()
+       FROM assignments
+       WHERE jobs.id = $1
+         AND assignments.job_id = jobs.id
+         AND assignments.node_id = $2
+         AND assignments.claimed_at IS NOT NULL
+       RETURNING jobs.id`,
+      [jobId, nodeId, JSON.stringify(summary)],
+    );
+    if (result.rowCount !== 1) {
+      const job = await this.findJob(jobId);
+      return { ok: false, reason: job ? "JOB_NOT_CLAIMED" : "JOB_NOT_FOUND" };
+    }
+    const updated = await this.findJob(jobId);
+    if (!updated) return { ok: false, reason: "JOB_NOT_FOUND" };
+    return { ok: true, value: updated };
   }
 }

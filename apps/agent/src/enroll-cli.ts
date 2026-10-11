@@ -16,8 +16,8 @@ if (!endpoint || !enrollmentKey || !ownerId) {
 }
 
 const runtime = await probeSandboxRuntime();
-if (!runtime.dockerAvailable || !runtime.rootless) {
-  throw new Error(`ROOTLESS_RUNTIME_REQUIRED: ${runtime.reasons.join("; ")}`);
+if (!runtime.dockerAvailable || !runtime.canExecute) {
+  throw new Error(`EXECUTION_RUNTIME_REQUIRED: ${runtime.reasons.join("; ")}`);
 }
 
 const prompt = createInterface({ input: process.stdin, output: process.stdout });
@@ -35,6 +35,7 @@ try {
       memoryMb: Math.floor(os.totalmem() / 1024 / 1024),
       networkModes: ["OFFLINE"],
       isolationLevels: runtime.isolationLevels,
+      accelerators: runtime.accelerators,
     },
     trust: new AgentTrustStore(new SystemCredentialStore()),
     confirmFingerprint: async (fingerprint) => {

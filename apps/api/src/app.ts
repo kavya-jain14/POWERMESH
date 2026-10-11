@@ -262,7 +262,8 @@ export function buildApp(options: BuildAppOptions = {}) {
         if (!registered) return reply.code(404).send({ error: "NODE_NOT_FOUND" });
         if (
           body.data.availableCpu > registered.cpuCores ||
-          body.data.availableMemoryMb > registered.memoryMb
+          body.data.availableMemoryMb > registered.memoryMb ||
+          (body.data.availableGpuCount ?? 0) > (registered.accelerators ?? []).length
         ) {
           return reply.code(400).send({ error: "INVALID_ADVERTISED_CAPACITY" });
         }
@@ -387,20 +388,38 @@ export function buildApp(options: BuildAppOptions = {}) {
         const outputWithinLimits =
           completion.data.stdout.sizeBytes + completion.data.stderr.sizeBytes <=
           assignedJob.resources.maxOutputBytes;
+        const gpuResultExpected = assignedJob.resources.accelerator === "NVIDIA_CUDA";
+        const gpuResultMatches = completion.data.resultSummary
+          ? gpuResultExpected &&
+            completion.data.resultSummary.matrixSize === Number(assignedJob.params.matrixSize) &&
+            completion.data.resultSummary.iterations === Number(assignedJob.params.iterations)
+          : !gpuResultExpected;
 
         const failed =
           completion.data.timedOut ||
           completion.data.outputTruncated ||
           !completion.data.outputValidated ||
           !outputWithinLimits ||
+          !gpuResultMatches ||
           completion.data.exitCode !== 0;
+
+        if (!failed && completion.data.resultSummary) {
+          const saved = await store.saveResultSummary(
+            params.data.jobId,
+            params.data.nodeId,
+            completion.data.resultSummary,
+          );
+          if (!saved.ok) {
+            return reply.code(failureStatus(saved.reason)).send({ error: saved.reason });
+          }
+        }
         const first = await store.transitionAssignedJob(
           params.data.jobId,
           params.data.nodeId,
           failed ? "FAILED" : "VALIDATING",
           "PROVIDER_AGENT",
           randomUUID(),
-          { ...completion.data, outputWithinLimits },
+          { ...completion.data, outputWithinLimits, gpuResultMatches },
         );
         if (!first.ok) {
           return reply.code(failureStatus(first.reason)).send({ error: first.reason });
