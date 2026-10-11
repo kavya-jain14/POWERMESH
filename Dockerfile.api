@@ -27,4 +27,4 @@ COPY --from=dependencies --chown=node:node /app/packages/contracts ./packages/co
 
 USER node
 EXPOSE 4000
-CMD ["sh", "-c", "if [ -n \"$DATABASE_URL\" ]; then node --import tsx apps/api/src/db/migrate.ts; fi && exec node --import tsx apps/api/src/server.ts"]
+CMD ["node", "--import", "tsx", "apps/api/src/start.ts"]
