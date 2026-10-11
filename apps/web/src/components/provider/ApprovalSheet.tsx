@@ -1,14 +1,20 @@
 "use client";
 
+import { Banner, Button, cx, Dialog, Digest, Icon, KeyValue, useAnnouncer } from "@powermesh/ui";
 import { useRef, useState } from "react";
-import { Banner, Button, Dialog, Digest, Icon, KeyValue, cx, useAnnouncer } from "@powermesh/ui";
-import { paramSpecs, type Offer } from "@/contracts-draft/types";
-import { contentTypeLabel, formatBytes, formatDuration, formatMaybeBytes } from "@/contracts-draft/format";
+import { AiRiskNote } from "@/components/common/AiRiskNote";
+import { RiskExplanationView } from "@/components/common/JobBits";
+import {
+  contentTypeLabel,
+  formatBytes,
+  formatDuration,
+  formatMaybeBytes,
+} from "@/contracts-draft/format";
+import { type Offer, paramSpecs } from "@/contracts-draft/types";
 import { getWorkload } from "@/contracts-draft/workloads";
 import { ApiError, agent } from "@/lib/api";
-import { useNow } from "@/lib/hooks";
 import { NETWORK_COPY } from "@/lib/copy";
-import { RiskExplanationView } from "@/components/common/JobBits";
+import { useNow } from "@/lib/hooks";
 import styles from "./Provider.module.css";
 
 function countdown(ms: number): string {
@@ -20,14 +26,25 @@ function countdown(ms: number): string {
  * G6 — explains exactly what can happen before consent: workload + digest, data, limits,
  * network and risk facts. Approve is "once": it never creates a standing permission.
  */
-export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offer | undefined; open: boolean; onClose: () => void; onDecided: (o: Offer) => void }) {
+export function ApprovalSheet({
+  offer,
+  open,
+  onClose,
+  onDecided,
+}: {
+  offer: Offer | undefined;
+  open: boolean;
+  onClose: () => void;
+  onDecided: (o: Offer) => void;
+}) {
   const now = useNow(500);
   const { announce } = useAnnouncer();
   const [busy, setBusy] = useState<"approve" | "decline" | null>(null);
   const [error, setError] = useState<string>();
   const declineRef = useRef<HTMLButtonElement>(null);
 
-  if (!offer) return <Dialog open={open} onClose={onClose} variant="sheet" title="Loading request…" />;
+  if (!offer)
+    return <Dialog open={open} onClose={onClose} variant="sheet" title="Loading request…" />;
 
   const remaining = Date.parse(offer.expiresAt) - now;
   const expired = offer.status === "expired" || (offer.status === "pending" && remaining <= 0);
@@ -41,7 +58,9 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
     try {
       // Q21: decisions go to the Agent on this device, which signs them and tells the coordinator.
       const next = await agent.decideOffer(offer.id, decision);
-      announce(decision === "approve" ? "Approved once. Preparing the sandbox." : "Request declined.");
+      announce(
+        decision === "approve" ? "Approved once. Preparing the sandbox." : "Request declined.",
+      );
       onDecided(next);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't send your decision.");
@@ -53,7 +72,8 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
   const paramLabel = (key: string, value: string | number | boolean) => {
     const spec = specs.find((p) => p.key === key);
     if (!spec) return `${value}`;
-    if (spec.type === "enum") return spec.options.find((o) => o.value === value)?.label ?? String(value);
+    if (spec.type === "enum")
+      return spec.options.find((o) => o.value === value)?.label ?? String(value);
     return `${value}${spec.unit ? ` ${spec.unit}` : ""}`;
   };
 
@@ -68,17 +88,34 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
       description={
         pending ? (
           <>
-            From {offer.requesterLabel}. Decide within <strong className={cx(styles.countdown, remaining < 15_000 && styles.countdownLow)}>{countdown(remaining)}</strong>.
+            From {offer.requesterLabel}. Decide within{" "}
+            <strong className={cx(styles.countdown, remaining < 15_000 && styles.countdownLow)}>
+              {countdown(remaining)}
+            </strong>
+            .
           </>
         ) : undefined
       }
       footer={
         pending ? (
           <>
-            <Button ref={declineRef} variant="secondary" icon="x" loading={busy === "decline"} disabled={busy !== null} onClick={() => void decide("decline")}>
+            <Button
+              ref={declineRef}
+              variant="secondary"
+              icon="x"
+              loading={busy === "decline"}
+              disabled={busy !== null}
+              onClick={() => void decide("decline")}
+            >
               Decline
             </Button>
-            <Button variant="primary" icon="check" loading={busy === "approve"} disabled={busy !== null} onClick={() => void decide("approve")}>
+            <Button
+              variant="primary"
+              icon="check"
+              loading={busy === "approve"}
+              disabled={busy !== null}
+              onClick={() => void decide("approve")}
+            >
               Approve once
             </Button>
           </>
@@ -103,10 +140,17 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
         {offer.status === "auto_approved" ? (
           <Banner tone="info" title="Approved automatically by your policy">
             {offer.policyRule?.label}
-            {offer.policyRule ? <span className="pm-small pm-mono"> ({offer.policyRule.code} · {offer.policyRule.policyVersion})</span> : null}
+            {offer.policyRule ? (
+              <span className="pm-small pm-mono">
+                {" "}
+                ({offer.policyRule.code} · {offer.policyRule.policyVersion})
+              </span>
+            ) : null}
           </Banner>
         ) : null}
-        {offer.status === "approved" ? <Banner tone="success" title="You approved this request once" /> : null}
+        {offer.status === "approved" ? (
+          <Banner tone="success" title="You approved this request once" />
+        ) : null}
         {offer.status === "declined" ? (
           <Banner tone="neutral" title="You declined this request">
             Nothing runs on this device, and the requester is told the job was declined.
@@ -127,7 +171,8 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
                 label: "Signature",
                 value: offer.workload.signatureVerified ? (
                   <span className={styles.ok}>
-                    <Icon name="shield" size={14} /> Verified · published by {offer.workload.publisher}
+                    <Icon name="shield" size={14} /> Verified · published by{" "}
+                    {offer.workload.publisher}
                   </span>
                 ) : (
                   <span className={styles.bad}>
@@ -135,7 +180,10 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
                   </span>
                 ),
               },
-              { label: "Image digest", value: <Digest value={offer.workload.digest} label="workload image digest" /> },
+              {
+                label: "Image digest",
+                value: <Digest value={offer.workload.digest} label="workload image digest" />,
+              },
             ]}
           />
         </section>
@@ -147,7 +195,10 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
           <KeyValue
             columns={2}
             items={[
-              { label: "Inputs", value: `${offer.inputs.count} file${offer.inputs.count === 1 ? "" : "s"}` },
+              {
+                label: "Inputs",
+                value: `${offer.inputs.count} file${offer.inputs.count === 1 ? "" : "s"}`,
+              },
               { label: "Types", value: offer.inputs.contentTypes.map(contentTypeLabel).join(", ") },
               { label: "Total size", value: formatMaybeBytes(offer.inputs.totalBytes) },
               { label: "Mounted as", value: "Read-only /input" },
@@ -172,7 +223,10 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
               { label: "Disk", value: formatMaybeBytes(offer.limits.diskBytes) },
               { label: "Time", value: formatDuration(offer.limits.timeoutSeconds) },
               { label: "Processes", value: offer.limits.pidLimit ?? "Not reported" },
-              { label: "Network", value: `${NETWORK_COPY[offer.networkMode].label} — ${NETWORK_COPY[offer.networkMode].short}` },
+              {
+                label: "Network",
+                value: `${NETWORK_COPY[offer.networkMode].label} — ${NETWORK_COPY[offer.networkMode].short}`,
+              },
             ]}
           />
         </section>
@@ -182,15 +236,20 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
             Risk
           </h3>
           <RiskExplanationView risk={offer.risk} heading="Risk" />
+          <AiRiskNote risk={offer.risk} audience="provider" />
         </section>
 
         <section className={cx(styles.sheetSection, styles.never)} aria-labelledby="sheet-never">
           <h3 id="sheet-never" className={styles.sheetHeading}>
             What the requester can never do
           </h3>
-          <ul role="list">
+          <ul
+            // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none, so the role is restored explicitly.
+            role="list"
+          >
             <li>
-              <Icon name="x" size={14} /> Open a shell, remote desktop or any inbound connection to this device
+              <Icon name="x" size={14} /> Open a shell, remote desktop or any inbound connection to
+              this device
             </li>
             <li>
               <Icon name="x" size={14} /> See your files, folders, network address or credentials
@@ -200,7 +259,9 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
             </li>
           </ul>
           <p className="pm-small">
-            <Icon name="stop" size={12} /> You can stop the job at any time from this console. The stop is handled by the Agent on this device, so it works even if the coordinator is unreachable.
+            <Icon name="stop" size={12} /> You can stop the job at any time from this console. The
+            stop is handled by the Agent on this device, so it works even if the coordinator is
+            unreachable.
           </p>
         </section>
       </div>
