@@ -1,0 +1,213 @@
+/* Kill switch bar — sticky so it stays visible while scrolling (master plan §6). */
+.killBar {
+  position: sticky;
+  top: var(--pm-space-3);
+  z-index: var(--pm-z-sticky);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pm-space-4);
+  padding: var(--pm-space-4) var(--pm-space-5);
+  border: 2px solid var(--pm-danger-fill);
+  border-radius: var(--pm-radius-lg);
+  background: var(--pm-surface-sunken);
+  color: var(--pm-ink);
+  box-shadow: var(--pm-shadow-sheet);
+}
+
+@media (max-width: 959px) {
+  .killBar {
+    top: calc(var(--pm-topbar-height) + var(--pm-space-2));
+  }
+}
+
+.killInfo {
+  min-width: 0;
+}
+
+.killTitle {
+  font-size: var(--pm-text-lg);
+  font-weight: var(--pm-weight-bold);
+}
+
+.killMeta {
+  font-weight: var(--pm-weight-regular);
+  color: var(--pm-accent-text);
+}
+
+/* Q22: the Agent's stop sequence. Pending steps are muted; done steps carry a check and a time. */
+.stopSteps {
+  display: grid;
+  gap: var(--pm-space-1);
+  margin: var(--pm-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--pm-text-sm);
+}
+
+.stopStep {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--pm-space-2);
+  color: var(--pm-ink-3);
+}
+
+.stopStepDone {
+  color: var(--pm-ink);
+}
+
+.stopStepDone svg {
+  color: var(--pm-success);
+}
+
+.stopStep time {
+  font-family: var(--pm-font-mono);
+  font-size: var(--pm-text-xs);
+  color: var(--pm-ink-3);
+}
+
+.offerRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pm-space-4);
+}
+
+.isoHeading {
+  font-size: var(--pm-text-xs);
+  font-weight: var(--pm-weight-medium);
+  color: var(--pm-ink-3);
+  margin-bottom: var(--pm-space-2);
+}
+
+.isoList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pm-space-2);
+  margin: 0 0 var(--pm-space-2);
+}
+
+.isoList li {
+  display: flex;
+  align-items: center;
+  gap: var(--pm-space-2);
+  font-weight: var(--pm-weight-medium);
+}
+
+/* Approval sheet */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pm-space-5);
+}
+
+.sheetSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pm-space-3);
+}
+
+.sheetHeading {
+  font-size: var(--pm-text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--pm-tracking-caps);
+  color: var(--pm-ink-3);
+}
+
+.sheetLead {
+  font-size: var(--pm-text-lg);
+  font-weight: var(--pm-weight-bold);
+}
+
+.countdown {
+  font-family: var(--pm-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.countdownLow {
+  color: var(--pm-danger);
+}
+
+.ok,
+.bad {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pm-space-1);
+}
+
+.ok {
+  color: var(--pm-success);
+}
+
+.bad {
+  color: var(--pm-danger);
+}
+
+.never {
+  padding: var(--pm-space-4);
+  background: var(--pm-surface-sunken);
+  border-radius: var(--pm-radius-md);
+}
+
+.never ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pm-space-2);
+  margin: 0;
+}
+
+.never li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--pm-space-2);
+  font-size: var(--pm-text-sm);
+}
+
+.never li svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--pm-danger);
+}
+
+/* Policy form */
+.policyForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pm-space-5);
+}
+
+.inline3 {
+  display: grid;
+  gap: var(--pm-space-4);
+}
+
+@media (min-width: 640px) {
+  .inline3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.checkRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--pm-space-3);
+  padding: var(--pm-space-2) 0;
+}
+
+.checkRow input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--pm-accent);
+  flex: none;
+}
+
+.formActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pm-space-2);
+  align-items: center;
+}

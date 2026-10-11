@@ -1,14 +1,17 @@
 {
   "name": "@powermesh/web",
-  "version": "0.1.0",
   "private": true,
+  "version": "0.1.0",
   "scripts": {
-    "build": "next build",
     "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@next/env": "16.4.0",
     "@powermesh/contracts": "workspace:*",
+    "@powermesh/ui": "workspace:*",
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"

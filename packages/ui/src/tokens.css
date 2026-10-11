@@ -1,0 +1,134 @@
+/*
+ * PowerMesh design tokens — G2, theme "2077" (tweakcn community, Evan Jacobs; dark variant).
+ * Black canvas, white type, coral-red action accent, square corners, Chakra Petch + IBM Plex Mono.
+ * Still a restrained compute console (master plan §6): no glassmorphism, no gradient heroes.
+ *
+ * Rules:
+ *  - Accent is the ACTION colour (primary buttons, active nav, running state). Text on an accent
+ *    fill always uses --pm-on-accent (black). Accent also passes AA as text on paper/surface.
+ *  - Danger is a separate crimson (--pm-danger-fill + white text) so "Stop" never looks like
+ *    "Approve", even though both are red-family in this theme.
+ *  - LOW risk is green, never the accent: a red-family "safe" badge would be misleading.
+ *  - Status and risk are never conveyed by colour alone — pair with a text label + icon.
+ *  - Text tokens are checked for WCAG AA (≥ 4.5:1) by scripts/check-contrast.mjs.
+ */
+:root {
+  color-scheme: dark;
+
+  /* ── Neutrals ─────────────────────────────────────────── */
+  --pm-paper: #000000;          /* page background */
+  --pm-surface: #0a0a0a;        /* panels, tables */
+  --pm-surface-sunken: #1c1c17; /* wells, code, table header (theme "muted") */
+  --pm-ink: #ffffff;            /* primary text, control outlines */
+  --pm-ink-2: #c9c9c4;          /* secondary text */
+  --pm-ink-3: #8f8f88;          /* muted text, captions (AA on every surface) */
+  --pm-line: #262626;           /* hairline borders (theme "border" #222, lifted for panels) */
+  --pm-line-strong: #55554f;    /* emphasised containers */
+
+  /* ── Accent ───────────────────────────────────────────── */
+  --pm-accent: #d6544b;         /* primary action fill + accent text */
+  --pm-accent-hover: #e0645a;
+  --pm-accent-press: #c94d44;
+  --pm-accent-tint: #2a110f;    /* selected / active background (ink text) */
+  --pm-on-accent: #000000;      /* text and icons on an accent fill */
+  --pm-accent-text: #e3695f;    /* accent as TEXT on dark wells (AA on surface-sunken) */
+
+  /* ── Status (text on tint backgrounds) ───────────────── */
+  --pm-success: #4ade80;
+  --pm-success-tint: #0e2a18;
+  --pm-info: #6ea4f5;           /* theme chart-3, lightened for AA */
+  --pm-info-tint: #0c1a33;
+  --pm-warning: #e68933;        /* theme chart-1 */
+  --pm-warning-tint: #2b1a07;
+  --pm-danger: #ff5a67;         /* danger TEXT */
+  --pm-danger-tint: #2e0a0e;
+  --pm-danger-fill: #ea1330;    /* danger FILL (theme destructive) — white text */
+  --pm-danger-fill-hover: #c40f28;
+  --pm-on-danger: #ffffff;
+  --pm-neutral: #b5b5ae;
+  --pm-neutral-tint: #232320;
+
+  /* ── Risk tiers ───────────────────────────────────────── */
+  --pm-risk-low-fg: #000000;
+  --pm-risk-low-bg: #4ade80;
+  --pm-risk-medium-fg: #000000;
+  --pm-risk-medium-bg: #d4ce21; /* theme chart-2 */
+  --pm-risk-high-fg: #000000;
+  --pm-risk-high-bg: #e68933;   /* theme chart-1 */
+  --pm-risk-blocked-fg: #ffffff;
+  --pm-risk-blocked-bg: #ea1330;
+
+  /* ── Overlays ─────────────────────────────────────────── */
+  --pm-backdrop: rgb(0 0 0 / 0.72);
+
+  /* ── Focus ────────────────────────────────────────────── */
+  --pm-focus-ring: 0 0 0 2px var(--pm-surface), 0 0 0 4px var(--pm-ink), 0 0 0 7px var(--pm-accent);
+
+  /* ── Typography ───────────────────────────────────────── */
+  --pm-font-sans: var(--pm-font-sans-loaded, "Chakra Petch"), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --pm-font-mono: var(--pm-font-mono-loaded, "IBM Plex Mono"), ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --pm-text-xs: 0.75rem;    /* 12 — captions, table meta */
+  --pm-text-sm: 0.8125rem;  /* 13 — table cells, badges */
+  --pm-text-md: 0.875rem;   /* 14 — body (compact console) */
+  --pm-text-lg: 1rem;       /* 16 — lead, inputs */
+  --pm-text-xl: 1.25rem;    /* 20 — section titles */
+  --pm-text-2xl: 1.5rem;    /* 24 — page titles */
+  --pm-text-3xl: 2rem;      /* 32 — display numbers */
+
+  --pm-leading-tight: 1.2;
+  --pm-leading-normal: 1.5;
+  --pm-weight-regular: 400;
+  --pm-weight-medium: 500;
+  --pm-weight-bold: 600;
+  --pm-tracking-caps: 0.06em;
+
+  /* ── Spacing (4px base) ───────────────────────────────── */
+  --pm-space-1: 0.25rem;
+  --pm-space-2: 0.5rem;
+  --pm-space-3: 0.75rem;
+  --pm-space-4: 1rem;
+  --pm-space-5: 1.5rem;
+  --pm-space-6: 2rem;
+  --pm-space-7: 3rem;
+  --pm-space-8: 4rem;
+
+  /* ── Shape ────────────────────────────────────────────── */
+  /* 2077 is square: radius 0 everywhere. Round data glyphs (status dots, timeline markers) stay round. */
+  --pm-radius-sm: 0;
+  --pm-radius-md: 0;
+  --pm-radius-lg: 0;
+  --pm-radius-pill: 0;
+  --pm-border: 1px solid var(--pm-line);
+  --pm-border-strong: 2px solid var(--pm-line-strong);
+  --pm-shadow-sheet: 0 24px 48px -12px rgb(0 0 0 / 0.9);
+
+  /* ── Layout ───────────────────────────────────────────── */
+  --pm-sidebar-width: 232px;
+  --pm-topbar-height: 56px;
+  --pm-content-max: 1200px;
+  --pm-gutter: 16px;
+
+  /* ── Motion ───────────────────────────────────────────── */
+  --pm-duration-fast: 120ms;
+  --pm-duration-base: 200ms;
+  --pm-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ── Layers ───────────────────────────────────────────── */
+  --pm-z-sticky: 10;
+  --pm-z-nav: 20;
+  --pm-z-toast: 40;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --pm-gutter: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --pm-duration-fast: 0ms;
+    --pm-duration-base: 0ms;
+  }
+}

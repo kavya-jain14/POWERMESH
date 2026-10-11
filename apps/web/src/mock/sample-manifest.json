@@ -1,0 +1,51 @@
+{
+  "inputs": [
+    {
+      "name": "contour-field.png",
+      "contentType": "image/png",
+      "bytes": 2969391,
+      "digest": "sha256:15207a80f9e0aa138713df3b0af760457a2cf4a32c79b38a1152e1546c8e9ab9"
+    },
+    {
+      "name": "node-grid.png",
+      "contentType": "image/png",
+      "bytes": 1721938,
+      "digest": "sha256:9993f8fdbaf9021f1ff88577a295c2f8cb36ef836dd722cb9357ef23dc35f794"
+    },
+    {
+      "name": "orbit-rings.png",
+      "contentType": "image/png",
+      "bytes": 2911754,
+      "digest": "sha256:cb194bab2bc10432fe629ac9b8f38a96d9f708af8e36f33c2e9a0895e92b957d"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "contour-field.webp",
+      "file": "contour-field.webp",
+      "contentType": "image/webp",
+      "bytes": 192112,
+      "digest": "sha256:5ecfc198ec7f8216f3bba1b92ee49c0de2f08e3823d7c66449748f4c21774961",
+      "width": 1600,
+      "height": 1067
+    },
+    {
+      "name": "node-grid.webp",
+      "file": "node-grid.webp",
+      "contentType": "image/webp",
+      "bytes": 26554,
+      "digest": "sha256:7d9fa83a79f1dcd8c7b65ea3e26876eeb140aa3bba63d6e950f8bfce1df1aaa6",
+      "width": 1600,
+      "height": 1067
+    },
+    {
+      "name": "orbit-rings.webp",
+      "file": "orbit-rings.webp",
+      "contentType": "image/webp",
+      "bytes": 124080,
+      "digest": "sha256:426bf6d3de53d3c8d14d64444e3b6c161807def3c8c5d8125de1ae6f4fec47c7",
+      "width": 1600,
+      "height": 1067
+    }
+  ]
+}

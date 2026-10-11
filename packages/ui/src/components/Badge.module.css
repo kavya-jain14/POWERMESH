@@ -1,0 +1,74 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pm-space-1);
+  height: 22px;
+  padding: 0 var(--pm-space-2);
+  border-radius: var(--pm-radius-sm);
+  font-size: var(--pm-text-xs);
+  font-weight: var(--pm-weight-bold);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.neutral { background: var(--pm-neutral-tint); color: var(--pm-neutral); }
+.info { background: var(--pm-info-tint); color: var(--pm-info); }
+.success { background: var(--pm-success-tint); color: var(--pm-success); }
+.warning { background: var(--pm-warning-tint); color: var(--pm-warning); }
+.danger { background: var(--pm-danger-tint); color: var(--pm-danger); }
+.active { background: var(--pm-accent); color: var(--pm-on-accent); }
+
+.risk {
+  text-transform: none;
+  letter-spacing: var(--pm-tracking-caps);
+}
+
+.riskSuffix {
+  font-weight: var(--pm-weight-medium);
+  letter-spacing: 0;
+}
+
+.riskLOW { background: var(--pm-risk-low-bg); color: var(--pm-risk-low-fg); }
+.riskMEDIUM { background: var(--pm-risk-medium-bg); color: var(--pm-risk-medium-fg); }
+.riskHIGH { background: var(--pm-risk-high-bg); color: var(--pm-risk-high-fg); }
+.riskBLOCKED { background: var(--pm-risk-blocked-bg); color: var(--pm-risk-blocked-fg); }
+
+.lg {
+  height: 28px;
+  padding: 0 var(--pm-space-3);
+  font-size: var(--pm-text-sm);
+}
+
+.statusDot {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pm-space-2);
+  font-size: var(--pm-text-sm);
+  font-weight: var(--pm-weight-medium);
+  color: var(--pm-ink-2);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.dot-neutral .dot { background: var(--pm-ink-3); }
+.dot-info .dot { background: var(--pm-info); }
+.dot-success .dot { background: var(--pm-success); }
+.dot-warning .dot { background: var(--pm-warning); }
+.dot-danger .dot { background: var(--pm-danger); }
+.dot-active .dot { background: var(--pm-ink); box-shadow: 0 0 0 2px var(--pm-accent); }
+
+.pulse {
+  animation: pulse 1.6s var(--pm-ease) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}

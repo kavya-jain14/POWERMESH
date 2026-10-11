@@ -1,0 +1,138 @@
+.health {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pm-space-2);
+  padding: var(--pm-space-5);
+  border: var(--pm-border-strong);
+  border-radius: var(--pm-radius-lg);
+  background: var(--pm-surface);
+}
+
+.health[data-status="healthy"] {
+  background: var(--pm-success-tint);
+  border-color: var(--pm-success);
+}
+
+.health[data-status="degraded"] {
+  background: var(--pm-warning-tint);
+  border-color: var(--pm-warning);
+}
+
+.health[data-status="incident"] {
+  background: var(--pm-danger-tint);
+  border-color: var(--pm-danger);
+}
+
+.healthHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pm-space-3);
+}
+
+.healthTitle {
+  font-size: var(--pm-text-xl);
+}
+
+.healthReason {
+  font-size: var(--pm-text-lg);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--pm-space-3);
+  margin: 0;
+}
+
+@media (min-width: 720px) {
+  .stats {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+.stat {
+  padding: var(--pm-space-3) var(--pm-space-4);
+  border: var(--pm-border);
+  border-radius: var(--pm-radius-md);
+  background: var(--pm-surface);
+}
+
+.stat dt {
+  font-size: var(--pm-text-xs);
+  color: var(--pm-ink-3);
+  font-weight: var(--pm-weight-medium);
+}
+
+.stat dd {
+  margin: 0;
+  font-size: var(--pm-text-3xl);
+  font-weight: var(--pm-weight-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+/* Mesh view */
+.mesh {
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  margin: 0 auto;
+}
+
+.link {
+  stroke: var(--pm-ink);
+  stroke-width: 1.5;
+}
+
+.linkBusy {
+  stroke: var(--pm-ink);
+  stroke-width: 3;
+}
+
+.linkOff {
+  stroke: var(--pm-ink-3);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 4;
+}
+
+.coord {
+  fill: var(--pm-ink);
+}
+
+.coordText {
+  fill: var(--pm-paper);
+  font-size: 10px;
+  font-family: var(--pm-font-mono);
+}
+
+.nodeText {
+  fill: var(--pm-ink-2);
+  font-size: 9px;
+  font-family: var(--pm-font-mono);
+}
+
+.node-available {
+  fill: var(--pm-surface);
+  stroke: var(--pm-ink);
+  stroke-width: 2;
+}
+
+.node-busy {
+  fill: var(--pm-accent);
+  stroke: var(--pm-ink);
+  stroke-width: 2;
+}
+
+.node-paused {
+  fill: var(--pm-surface-sunken);
+  stroke: var(--pm-ink-3);
+  stroke-width: 2;
+}
+
+.node-offline {
+  fill: var(--pm-surface);
+  stroke: var(--pm-ink-3);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 2;
+}

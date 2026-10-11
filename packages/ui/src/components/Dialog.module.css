@@ -1,0 +1,102 @@
+.dialog {
+  padding: 0;
+  border: var(--pm-border-strong);
+  background: var(--pm-surface);
+  color: var(--pm-ink);
+  box-shadow: var(--pm-shadow-sheet);
+  max-height: calc(100dvh - 32px);
+}
+
+.dialog::backdrop {
+  background: var(--pm-backdrop);
+}
+
+.center {
+  width: min(480px, calc(100vw - 32px));
+  border-radius: var(--pm-radius-lg);
+}
+
+.sheet {
+  width: min(560px, 100vw);
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0 0 0 auto;
+  border-radius: 0;
+  border-width: 0 0 0 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sheet[open] {
+    animation: slide-in var(--pm-duration-base) var(--pm-ease);
+  }
+  .center[open] {
+    animation: fade-in var(--pm-duration-base) var(--pm-ease);
+  }
+}
+
+@keyframes slide-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes fade-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.inner {
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
+  height: 100%;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--pm-space-4);
+  padding: var(--pm-space-5) var(--pm-space-5) var(--pm-space-3);
+  border-bottom: var(--pm-border);
+}
+
+.title {
+  font-size: var(--pm-text-xl);
+}
+
+.description {
+  margin-top: var(--pm-space-1);
+  color: var(--pm-ink-3);
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: 1px solid var(--pm-line);
+  border-radius: var(--pm-radius-md);
+  background: var(--pm-surface);
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--pm-surface-sunken);
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--pm-space-4) var(--pm-space-5);
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--pm-space-2);
+  padding: var(--pm-space-4) var(--pm-space-5);
+  border-top: var(--pm-border);
+  background: var(--pm-surface);
+}

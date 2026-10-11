@@ -22,7 +22,7 @@ No requester receives shell access, host filesystem access, Docker socket access
 
 ```text
 apps/
-  web/        Requester, provider, approval, and job-status UI
+  web/        Requester, provider, approval, and job-status UI (Next.js)
   api/        Coordinator API and policy boundary
   agent/      Provider-side capability and execution Agent
 packages/
@@ -101,6 +101,38 @@ credential store, the Agent polls outbound for signed offers, verifies the pinne
 approves according to local policy, claims once, executes, validates output magic bytes, and reports
 only sizes and SHA-256 digests. `POWERMESH_AUTO_APPROVE_LOW_RISK=true` is an explicit demo-only local
 policy choice; it never enables medium- or high-risk auto-approval.
+
+## Web app (Gargi)
+
+`apps/web` covers the six surfaces in master plan §6: Job Composer, Flight Recorder, Provider Console,
+Approval Sheet, Control Room and Policy & Audit. Its design system lives in `packages/ui`
+(theme "2077": tokens, components, `pnpm check:contrast`). Living status and decisions: [`context.md`](context.md).
+
+The UI runs in one of two modes, set by `NEXT_PUBLIC_POWERMESH_MODE` in the root `.env`:
+
+- **`offline-demo`** (default; `mock` is an alias): an in-app simulator under `/api/mock` that follows the
+  v0 contract answers (`docs/handoff/answers-from-kavya.md`). It also simulates the provider's Agent local
+  API (ADR-002). Every surface and state works with no backend, for design work and demo rehearsal. A
+  strip at the top of each page says "Offline demo data". Off in production builds unless
+  `NEXT_PUBLIC_POWERMESH_OFFLINE_DEMO=1`.
+- **`live`**: job submission, job list, job detail and the live timeline go to the coordinator API
+  through a server-side bridge (`/api/live/v1`). The bridge holds the enrollment credential and keeps
+  the requester token in an httpOnly cookie, so no credential ever reaches browser JavaScript. Surfaces
+  with no API yet (provider console, offers, network health, audit) use the simulator in development
+  and say so.
+
+```bash
+pnpm dev:api   # coordinator on :4000 (in-memory store unless DATABASE_URL is set)
+pnpm dev:web   # web on :3000
+```
+
+Demo click path (offline demo, about 2 minutes):
+
+1. **Requester** → New job → Demo sample set → Submit. Watch the Flight Recorder move through its states.
+2. Switch to **Provider** → "Review request" → read the Approval Sheet → **Approve once**.
+3. Back as **Requester**, open the job: live timeline, limits, then the validated result.
+4. Run another job and, as Provider, press **Stop job** (or Ctrl + .) while it runs.
+5. As **Admin**: Control Room for health and nodes, Policy & Audit to trace why a job was allowed or blocked.
 
 ## Quality checks
 
