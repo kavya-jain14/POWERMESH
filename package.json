@@ -19,6 +19,7 @@
     "format": "biome check --write .",
     "infra:down": "docker compose down",
     "infra:up": "docker compose up -d postgres",
+    "workload:image:build": "docker build --file Dockerfile.workload-image-transform --tag powermesh/image-transform:1.0.0 .",
     "lint": "biome check .",
     "test": "turbo test",
     "typecheck": "turbo typecheck"

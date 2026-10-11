@@ -7,13 +7,14 @@ const host = process.env.API_HOST ?? "127.0.0.1";
 const encodedPrivateKey = process.env.OFFER_SIGNING_PRIVATE_KEY_BASE64;
 const coordinatorKey = process.env.POWERMESH_COORDINATOR_KEY;
 const enrollmentKey = process.env.POWERMESH_ENROLLMENT_KEY;
+const imageTransformImage = process.env.POWERMESH_IMAGE_TRANSFORM_IMAGE;
 
 if (
   process.env.NODE_ENV === "production" &&
-  (!encodedPrivateKey || !coordinatorKey || !enrollmentKey)
+  (!encodedPrivateKey || !coordinatorKey || !enrollmentKey || !imageTransformImage)
 ) {
   throw new Error(
-    "OFFER_SIGNING_PRIVATE_KEY_BASE64, POWERMESH_COORDINATOR_KEY, and POWERMESH_ENROLLMENT_KEY are required in production",
+    "OFFER_SIGNING_PRIVATE_KEY_BASE64, POWERMESH_COORDINATOR_KEY, POWERMESH_ENROLLMENT_KEY, and POWERMESH_IMAGE_TRANSFORM_IMAGE are required in production",
   );
 }
 

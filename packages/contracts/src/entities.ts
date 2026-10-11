@@ -6,24 +6,47 @@ export const isolationLevels = ["CONTAINER_BASELINE", "GVISOR", "MICROVM"] as co
 
 export const imageDigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 
-export const workloadDefinitionSchema = z.object({
-  name: z.string().trim().min(2).max(80),
-  version: z.string().trim().min(1).max(40),
-  imageDigest: imageDigestSchema,
-});
+export const pinnedImageReferenceSchema = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9._/-]*(?::[a-zA-Z0-9._-]+)?@sha256:[a-f0-9]{64}$/);
+
+export const workloadParamValueSchema = z.union([z.string(), z.number(), z.boolean()]);
+
+export const workloadParamsSchema = z
+  .record(z.string().min(1).max(80), workloadParamValueSchema)
+  .refine((value) => Object.keys(value).length <= 50, "At most 50 parameters are allowed");
+
+export const workloadDefinitionSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string().trim().min(2).max(80),
+    version: z.string().trim().min(1).max(40),
+    imageDigest: imageDigestSchema,
+    imageReference: pinnedImageReferenceSchema,
+  })
+  .superRefine(({ imageDigest, imageReference }, context) => {
+    if (!imageReference.endsWith(`@${imageDigest}`)) {
+      context.addIssue({
+        code: "custom",
+        path: ["imageReference"],
+        message: "imageReference digest must match imageDigest",
+      });
+    }
+  });
 
 export const jobSubmissionSchema = z.object({
   requesterId: z.string().uuid(),
   workload: workloadDefinitionSchema,
   resources: workloadRequestSchema,
-  params: z
-    .record(z.string().min(1).max(80), z.string().max(2_000))
-    .refine((value) => Object.keys(value).length <= 50, "At most 50 parameters are allowed")
-    .default({}),
+  params: workloadParamsSchema.default({}),
   inputDigests: z.array(imageDigestSchema).max(20).default([]),
 });
 
-export const jobCreationSchema = jobSubmissionSchema.omit({ requesterId: true });
+export const jobCreationSchema = z.object({
+  workloadId: z.string().uuid(),
+  params: workloadParamsSchema.default({}),
+  inputDigests: z.array(imageDigestSchema).max(20).default([]),
+});
 
 export const requesterRegistrationSchema = z.object({
   communityId: z.string().trim().min(2).max(80).optional(),

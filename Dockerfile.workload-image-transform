@@ -1,0 +1,21 @@
+FROM node:22.22.0-bookworm-slim AS dependencies
+
+ENV NODE_ENV=production
+WORKDIR /workload
+COPY workloads/image-transform/package.json workloads/image-transform/package-lock.json ./
+RUN npm ci --omit=dev
+
+FROM node:22.22.0-bookworm-slim AS runtime
+
+ENV NODE_ENV=production
+WORKDIR /workload
+RUN apt-get update \
+  && apt-get upgrade --yes \
+  && rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+
+COPY --from=dependencies --chown=node:node /workload/node_modules ./node_modules
+COPY --chown=node:node workloads/image-transform/index.mjs ./index.mjs
+
+USER node
+ENTRYPOINT ["node", "index.mjs"]

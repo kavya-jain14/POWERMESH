@@ -15,6 +15,12 @@ flowchart TD
 
 The coordinator is a control plane, not a remote shell relay. The Agent establishes an outbound authenticated channel, advertises observed capabilities, receives signed short-lived offers, and owns the local kill path.
 
+The coordinator owns the workload catalog. A requester selects a workload ID and validated
+parameters; it cannot choose a container image, network mode, privilege, or resource envelope.
+Matching uses fresh provider heartbeats and subtracts resources reserved by offered, approved,
+claimed, running, or validating jobs before creating another offer. PostgreSQL serializes this check
+with a provider-row lock so concurrent submissions cannot oversubscribe a node.
+
 ## Workspace boundaries
 
 - `apps/web`: untrusted user interaction and sanitized result presentation
@@ -46,3 +52,10 @@ provider machine. Every offer carries a canonical manifest signed with Ed25519, 
 digest, a 256-bit nonce, and a short expiry. Provider approval and Agent claim are separate state
 transitions. Claim atomically consumes the nonce and creates a bounded lease, so a captured request
 cannot be replayed to start the job again.
+
+## Execution result boundary
+
+The image-transform workload writes one bounded image to stdout. The Agent checks the expected
+format's magic bytes and size before marking the output validated, hashes stdout and stderr, and
+sends only size/digest metadata to the coordinator. The current phase does not yet provide requester
+artifact upload or downloadable output storage, so the demo image is embedded in the workload.

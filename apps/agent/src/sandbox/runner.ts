@@ -1,10 +1,14 @@
 import type { EgressNetworkController } from "../egress/docker-network";
-import type { SandboxExecutor } from "./docker";
 import type { SandboxJob, SandboxResult } from "./types";
+
+export interface SandboxExecutionAdapter {
+  execute(job: SandboxJob, signal?: AbortSignal): Promise<SandboxResult>;
+  kill(jobId: string): boolean;
+}
 
 export async function executeSandboxJob(
   job: SandboxJob,
-  executor: SandboxExecutor,
+  executor: SandboxExecutionAdapter,
   egress?: EgressNetworkController,
   signal?: AbortSignal,
 ): Promise<SandboxResult> {

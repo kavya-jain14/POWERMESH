@@ -17,10 +17,11 @@ export function sandboxJobFromVerifiedOffer(
 
   return {
     jobId: offer.manifest.jobId,
-    image: offer.manifest.workload.imageDigest,
+    image: offer.manifest.workload.imageReference,
     isolation,
     networkMode: offer.manifest.resources.networkMode,
     allowedHosts: offer.manifest.resources.allowedHosts,
+    command: [JSON.stringify(offer.manifest.params)],
     limits: {
       cpu: offer.manifest.resources.cpu,
       memoryMb: offer.manifest.resources.memoryMb,

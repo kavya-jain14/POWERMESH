@@ -46,6 +46,8 @@ jobs:
       - run: corepack pnpm audit --prod --audit-level high
       - run: docker build --file Dockerfile.api --tag powermesh-api:security .
       - run: docker build --file Dockerfile.egress --tag powermesh-egress:security .
+      - run: docker build --file Dockerfile.workload-image-transform --tag powermesh-image-transform:security .
+      - run: npm audit --omit=dev --prefix workloads/image-transform --audit-level=high
       - name: Scan repository and configuration
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -67,6 +69,14 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: powermesh-egress:security
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+      - name: Scan image-transform workload container
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: powermesh-image-transform:security
           scanners: vuln,secret,misconfig
           severity: HIGH,CRITICAL
           ignore-unfixed: true
