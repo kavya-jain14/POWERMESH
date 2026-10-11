@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { errorResponse } from "@/mock/http";
-import { resolveArtifact } from "@/mock/store";
+import { assertOfflineDemoEnabled, resolveArtifact } from "@/mock/store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -13,6 +13,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const { id } = await ctx.params;
   const url = new URL(req.url);
   try {
+    assertOfflineDemoEnabled();
     const { artifact, file } = resolveArtifact(id, url.searchParams.get("exp"), url.searchParams.get("sig"));
     const bytes = await readFile(path.join(process.cwd(), "mock-artifacts", path.basename(file)));
     const download = url.searchParams.get("download") === "1" || !INLINE_TYPES.has(artifact.contentType);

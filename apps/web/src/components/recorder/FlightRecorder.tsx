@@ -19,7 +19,7 @@ import {
   useAnnouncer,
   type Tone,
 } from "@powermesh/ui";
-import { TRANSITIONS, isTerminal, type Role } from "@/contracts-draft/types";
+import { SCHEDULING, TRANSITIONS, isTerminal, type Role } from "@/contracts-draft/types";
 import { formatBytes, formatDateTime, formatDuration, formatInputs, formatMaybeBytes, formatRelative } from "@/contracts-draft/format";
 import { ApiError, api } from "@/lib/api";
 import { useJobStream, useNow, type StreamStatus } from "@/lib/hooks";
@@ -34,7 +34,7 @@ const STREAM_COPY: Record<StreamStatus, { tone: Tone; label: string; pulse?: boo
   connecting: { tone: "neutral", label: "Connecting…" },
   live: { tone: "success", label: "Live", pulse: true },
   reconnecting: { tone: "warning", label: "Reconnecting…" },
-  stale: { tone: "warning", label: "No updates — may be stale" },
+  stale: { tone: "warning", label: "No updates for 12s+ — may be stale" },
   ended: { tone: "neutral", label: "Final" },
 };
 
@@ -53,7 +53,7 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
     if (!job) return;
     const key = `${job.state}:${job.attempt}`;
     if (lastAnnounced.current && lastAnnounced.current !== key) {
-      const terminalBad = ["FAILED", "REJECTED", "TIMED_OUT"].includes(job.state);
+      const terminalBad = ["FAILED", "REJECTED", "TIMED_OUT", "DECLINED", "EXPIRED"].includes(job.state);
       announce(`Job ${job.id}: ${STATE_COPY[job.state].badge}. ${describeJob(job, role)}`, terminalBad ? "assertive" : "polite");
     }
     lastAnnounced.current = key;
@@ -91,8 +91,8 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
   }
 
   const terminal = isTerminal(job.state);
+  // Q3: cancel is allowed in every state the contract permits, including while OFFERED.
   const cancellable = (role === "requester" || role === "admin") && TRANSITIONS[job.state].includes("CANCELLED");
-  const waitingOnProvider = job.state === "OFFERED" && role !== "provider";
   const stream = STREAM_COPY[status];
   const silentFor = lastMessageAt ? Math.round((now - lastMessageAt) / 1000) : 0;
   const tone = STATE_COPY[job.state].tone;
@@ -117,7 +117,7 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
         back={{ href: role === "provider" ? "/provider" : "/jobs", label: role === "provider" ? "Provider Console" : role === "admin" ? "All jobs" : "My jobs" }}
         title={
           <>
-            {job.workloadName} <span className="pm-muted pm-mono" style={{ fontSize: "0.7em", fontWeight: 500 }}>{job.id}</span>
+            {job.workload.name} <span className="pm-muted pm-mono" style={{ fontSize: "0.7em", fontWeight: 500 }}>{job.id}</span>
           </>
         }
         meta={
@@ -134,8 +134,8 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
             <Link href={`/audit?jobId=${encodeURIComponent(job.id)}`} className={buttonClassName("secondary")}>
               Audit trail
             </Link>
-            {cancellable || waitingOnProvider ? (
-              <Button variant="secondary" icon="stop" disabled={waitingOnProvider} onClick={() => setConfirmCancel(true)} aria-describedby={waitingOnProvider ? "cancel-why" : undefined}>
+            {cancellable ? (
+              <Button variant="secondary" icon="stop" onClick={() => setConfirmCancel(true)}>
                 Cancel job
               </Button>
             ) : null}
@@ -144,12 +144,6 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
       />
 
       <div className="pm-stack">
-        {waitingOnProvider ? (
-          <p id="cancel-why" className="pm-small pm-muted">
-            You can cancel once the provider responds or the request expires (within a minute).
-          </p>
-        ) : null}
-
         {status === "stale" || status === "reconnecting" ? (
           <Banner
             tone="warning"
@@ -167,9 +161,16 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
         ) : null}
 
         {job.attempt > 1 && !terminal ? (
-          <Banner tone="info" title={`Retrying — attempt ${job.attempt}`}>
-            The previous provider stopped responding, so its lease expired. This workload is safe to repeat, so it was requeued once.
+          <Banner tone="info" title={`Retrying on another eligible provider — attempt ${job.attempt} of ${job.maxAttempts}`}>
+            The previous provider stopped responding for {SCHEDULING.leaseSeconds + SCHEDULING.leaseGraceSeconds} seconds, so its lease expired. This workload
+            is safe to repeat, so it went back to the queue once.
           </Banner>
+        ) : null}
+
+        {job.state === "QUEUED" ? (
+          <p className="pm-small pm-muted">
+            Queued jobs wait up to {SCHEDULING.queueTimeoutSeconds / 60} minutes for a compatible provider, then expire. Nothing runs until a provider approves.
+          </p>
         ) : null}
 
         <div className={styles.statusCard} data-tone={tone}>
@@ -182,11 +183,11 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
               valueText={`${job.progress.done} of ${job.progress.total}`}
             />
           ) : null}
-          {["SUBMITTED", "QUEUED", "POLICY_CHECKED", "OFFERED", "APPROVED", "CLAIMED", "STAGING", "VALIDATING"].includes(job.state) ? <ProgressBar label="Working" valueText={STATE_COPY[job.state].badge} /> : null}
+          {["SUBMITTED", "POLICY_CHECKED", "QUEUED", "OFFERED", "APPROVED", "CLAIMED", "STAGING", "VALIDATING"].includes(job.state) ? <ProgressBar label="Working" valueText={STATE_COPY[job.state].badge} /> : null}
           <Milestones events={events} current={job.state} />
         </div>
 
-        {job.state === "SUCCEEDED" ? <ResultPanel job={job} onRefresh={refreshJob} /> : null}
+        {job.state === "SUCCEEDED" || job.artifacts.length > 0 ? <ResultPanel job={job} onRefresh={refreshJob} /> : null}
 
         <div className="pm-grid-2">
           <Panel
@@ -211,7 +212,7 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
                     <LimitMeter label="CPU" used={job.usage.cpuCores} limit={job.limits.cpuCores} format={(n) => `${n.toFixed(2)} core`} />
                     <LimitMeter label="Memory" used={job.usage.memoryBytes} limit={job.limits.memoryBytes} format={formatBytes} />
                     {job.limits.diskBytes != null ? <LimitMeter label="Disk" used={job.usage.diskBytes} limit={job.limits.diskBytes} format={formatBytes} /> : null}
-                    <LimitMeter label="Time" used={job.usage.elapsedSeconds} limit={job.limits.wallClockSeconds} format={formatDuration} />
+                    <LimitMeter label="Time" used={job.usage.elapsedSeconds} limit={job.limits.timeoutSeconds} format={formatDuration} />
                   </>
                 ) : (
                   <KeyValue
@@ -220,7 +221,7 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
                       { label: "CPU", value: `${job.limits.cpuCores} core` },
                       { label: "Memory", value: formatBytes(job.limits.memoryBytes) },
                       { label: "Disk", value: formatMaybeBytes(job.limits.diskBytes) },
-                      { label: "Time", value: formatDuration(job.limits.wallClockSeconds) },
+                      { label: "Time", value: formatDuration(job.limits.timeoutSeconds) },
                     ]}
                   />
                 )}
@@ -230,8 +231,8 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
             <Panel title="Job facts">
               <KeyValue
                 items={[
-                  { label: "Workload", value: `${job.workloadName} v${job.workloadVersion}` },
-                  { label: "Workload digest", value: <Digest value={job.workloadDigest} label="workload digest" /> },
+                  { label: "Workload", value: `${job.workload.name} v${job.workload.version}` },
+                  { label: "Workload digest", value: <Digest value={job.workload.digest} label="workload digest" /> },
                   {
                     label: "Inputs",
                     value: formatInputs(job.inputs),
@@ -260,7 +261,11 @@ export function FlightRecorder({ jobId, role }: { jobId: string; role: Role }) {
         onClose={() => !cancelling && setConfirmCancel(false)}
         dismissible={!cancelling}
         title="Cancel this job?"
-        description="If it's running, the sandbox is stopped and its workspace is cleaned up. This can't be undone."
+        description={
+          job.state === "OFFERED"
+            ? "The open offer is withdrawn, so the provider can't approve it any more. This can't be undone."
+            : "If it's running, the sandbox is stopped and its workspace is cleaned up. This can't be undone."
+        }
         footer={
           <>
             <Button variant="secondary" onClick={() => setConfirmCancel(false)} disabled={cancelling}>

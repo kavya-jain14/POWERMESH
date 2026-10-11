@@ -3,13 +3,14 @@ import { listAudit } from "@/mock/store";
 
 export const dynamic = "force-dynamic";
 
+/** Q15/Q17: GET /v1/audit?jobId=&nodeId=&type=&q=&cursor=&limit= → Page<AuditEvent>. */
 export async function GET(req: Request) {
-  const url = new URL(req.url);
+  const p = new URL(req.url).searchParams;
   return handle((user) =>
-    listAudit(user, {
-      jobId: url.searchParams.get("jobId") ?? undefined,
-      nodeId: url.searchParams.get("nodeId") ?? undefined,
-      type: url.searchParams.get("type") ?? undefined,
-    }),
+    listAudit(
+      user,
+      { jobId: p.get("jobId") ?? undefined, nodeId: p.get("nodeId") ?? undefined, type: p.get("type") ?? undefined, q: p.get("q") ?? undefined },
+      { cursor: p.get("cursor"), limit: p.has("limit") ? Number(p.get("limit")) : null },
+    ),
   );
 }

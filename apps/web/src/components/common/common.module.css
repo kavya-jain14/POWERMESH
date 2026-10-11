@@ -90,6 +90,12 @@
   font-size: var(--pm-text-sm);
 }
 
+.riskFactDetail {
+  font-family: var(--pm-font-mono);
+  font-size: var(--pm-text-xs);
+  color: var(--pm-ink-3);
+}
+
 .riskFactIcon {
   flex: none;
   margin-top: 3px;

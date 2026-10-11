@@ -1,10 +1,13 @@
 import { handle } from "@/mock/http";
-import { getOffer } from "@/mock/store";
+import { assertCoordinatorUp, getOffer } from "@/mock/store";
 
 export const dynamic = "force-dynamic";
 
-/** Served by the local Agent in the proposed design (G1 §6 Q9) — so no coordinator check. */
+/** Q15/Q21: offers are read from the coordinator, like every other provider view. */
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  return handle((user) => getOffer(id, user));
+  return handle((user) => {
+    assertCoordinatorUp();
+    return getOffer(id, user);
+  });
 }

@@ -224,6 +224,19 @@
   margin-top: 0;
 }
 
+/* Coded log events (offer outcomes, stop steps): a short tag, then the sentence. */
+.eventCode {
+  display: inline-block;
+  margin-right: var(--pm-space-2);
+  padding: 0 var(--pm-space-1);
+  border: var(--pm-border);
+  font-size: var(--pm-text-xs);
+  font-weight: var(--pm-weight-bold);
+  letter-spacing: var(--pm-tracking-caps);
+  text-transform: uppercase;
+  color: var(--pm-ink);
+}
+
 .eventReason {
   font-size: var(--pm-text-xs);
   color: var(--pm-ink-3);

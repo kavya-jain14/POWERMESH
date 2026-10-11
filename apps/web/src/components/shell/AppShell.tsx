@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon, Select, cx } from "@powermesh/ui";
 import type { Role } from "@/contracts-draft/types";
-import { IS_LIVE, IS_MOCK, devApi } from "@/lib/api";
+import { IS_LIVE, USES_SIMULATOR, devApi } from "@/lib/api";
 import { ROLE_LABEL } from "@/lib/copy";
 import { NAV, isActive } from "./nav";
 import { Logo } from "./Logo";
@@ -65,7 +65,7 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
     </nav>
   );
 
-  const roleSwitch = (id: string) => IS_MOCK ? (
+  const roleSwitch = (id: string) => USES_SIMULATOR ? (
     <div className={styles.roleSwitch}>
       <label htmlFor={id} className={styles.roleLabel}>
         Viewing as <span className={styles.mockTag}>demo</span>
@@ -109,7 +109,7 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
         {nav}
         <div className={styles.sidebarFooter}>
           {roleSwitch("pm-role-drawer")}
-          {IS_MOCK ? <DemoControls /> : null}
+          {USES_SIMULATOR ? <DemoControls /> : null}
         </div>
       </div>
 
@@ -121,7 +121,7 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
         {nav}
         <div className={styles.sidebarFooter}>
           {roleSwitch("pm-role-sidebar")}
-          {IS_MOCK ? <DemoControls /> : null}
+          {USES_SIMULATOR ? <DemoControls /> : null}
         </div>
       </aside>
 
@@ -129,12 +129,12 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
         {IS_LIVE ? (
           <p className={styles.mockStrip}>
             <Icon name="info" size={14} />
-            Live coordinator for jobs. Provider, offers, network and audit still use mock data — the API has no endpoints for them yet.
+            Live coordinator for jobs. Provider, offers, network and audit need endpoints the API doesn't have yet{USES_SIMULATOR ? " — they show offline demo data here" : ""}.
           </p>
-        ) : IS_MOCK ? (
+        ) : USES_SIMULATOR ? (
           <p className={styles.mockStrip}>
             <Icon name="info" size={14} />
-            Mock coordinator — draft contracts and fixture data. Not connected to real providers.
+            <strong>Offline demo data</strong> — a simulated coordinator and Agent, for rehearsal. Nothing here runs on a real provider.
           </p>
         ) : null}
         <div className={styles.content}>{children}</div>

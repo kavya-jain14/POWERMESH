@@ -4,9 +4,10 @@ import type { SubmitJobRequest } from "@/contracts-draft/types";
 
 export const dynamic = "force-dynamic";
 
-/** ❓ Kavya: a list endpoint isn't in API v0 yet — /jobs needs one. */
-export async function GET() {
-  return handle((user) => listJobs(user));
+/** Q15: GET /v1/jobs?cursor=&limit= → Page<Job>. */
+export async function GET(req: Request) {
+  const p = new URL(req.url).searchParams;
+  return handle((user) => listJobs(user, { cursor: p.get("cursor"), limit: p.has("limit") ? Number(p.get("limit")) : null }));
 }
 
 export async function POST(req: Request) {

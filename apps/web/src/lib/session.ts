@@ -7,6 +7,9 @@ import type { Role } from "@/contracts-draft/types";
  * rules (G1 §2) are exercised from day one.
  */
 export async function getRole(): Promise<Role> {
+  // Q26: a browser-set role cookie is never authority. It's honoured only by the offline demo; elsewhere the
+  // live API only knows requesters until GET /v1/me lands.
+  if (process.env.NODE_ENV === "production" && process.env.NEXT_PUBLIC_POWERMESH_OFFLINE_DEMO !== "1") return "requester";
   const value = (await cookies()).get("pm_role")?.value;
   return value === "provider" || value === "admin" ? value : "requester";
 }

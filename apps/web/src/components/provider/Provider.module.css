@@ -36,6 +36,38 @@
   color: var(--pm-accent-text);
 }
 
+/* Q22: the Agent's stop sequence. Pending steps are muted; done steps carry a check and a time. */
+.stopSteps {
+  display: grid;
+  gap: var(--pm-space-1);
+  margin: var(--pm-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--pm-text-sm);
+}
+
+.stopStep {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--pm-space-2);
+  color: var(--pm-ink-3);
+}
+
+.stopStepDone {
+  color: var(--pm-ink);
+}
+
+.stopStepDone svg {
+  color: var(--pm-success);
+}
+
+.stopStep time {
+  font-family: var(--pm-font-mono);
+  font-size: var(--pm-text-xs);
+  color: var(--pm-ink-3);
+}
+
 .offerRow {
   display: flex;
   flex-wrap: wrap;

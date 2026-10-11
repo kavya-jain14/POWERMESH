@@ -1,10 +1,12 @@
 /**
  * ⚠️ DRAFT — workload catalogue fixture. The real signed definition lives in
- * `workloads/image-transform` (Kavya). Digests below are placeholders, not real images.
+ * `workloads/image-transform` (Kavya). Shapes follow Q28 (main, 2026-10-10 22:24). Digests below are placeholders, not real
+ * images, so nothing here may reach real execution.
  */
-import type { WorkloadDefinition } from "./types";
+import type { ParamsSchema, WorkloadDefinition } from "./types";
 
 const MB = 1024 * 1024;
+const NO_PARAMS: ParamsSchema = { type: "object", additionalProperties: false, required: [], properties: {} };
 
 export const IMAGE_TRANSFORM: WorkloadDefinition = {
   id: "image-transform",
@@ -17,26 +19,21 @@ export const IMAGE_TRANSFORM: WorkloadDefinition = {
   runsRequesterCode: false,
   needsSecrets: false,
   needsDeviceAccess: false,
-  inputSchema: { accept: ["image/png", "image/jpeg", "image/webp"], maxFiles: 12, maxFileBytes: 10 * MB, maxTotalBytes: 50 * MB },
-  outputSchema: { contentTypes: ["image/webp", "image/jpeg", "image/png"], maxFileBytes: 10 * MB },
-  params: [
-    {
-      key: "format",
-      label: "Output format",
-      type: "enum",
-      options: [
-        { value: "webp", label: "WebP" },
-        { value: "jpeg", label: "JPEG" },
-        { value: "png", label: "PNG" },
-      ],
-      default: "webp",
+  input: { contentTypes: ["image/png", "image/jpeg", "image/webp"], maxFiles: 12, maxBytesPerFile: 10 * MB, maxTotalBytes: 50 * MB },
+  output: { contentTypes: ["image/webp", "image/jpeg", "image/png"], maxBytesPerFile: 10 * MB },
+  paramsSchema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["format", "maxWidth", "quality"],
+    properties: {
+      format: { type: "string", enum: ["webp", "jpeg", "png"], default: "webp", title: "Output format", description: "WebP is smallest for photos and drawings." },
+      maxWidth: { type: "integer", minimum: 256, maximum: 4096, multipleOf: 64, default: 1600, title: "Maximum width", "x-unit": "px", description: "Images narrower than this keep their size." },
+      quality: { type: "integer", minimum: 40, maximum: 95, default: 82, title: "Quality", "x-unit": "%", description: "Ignored for PNG." },
     },
-    { key: "maxWidth", label: "Maximum width", type: "int", min: 256, max: 4096, step: 64, default: 1600, unit: "px", hint: "Images narrower than this keep their size." },
-    { key: "quality", label: "Quality", type: "int", min: 40, max: 95, default: 82, unit: "%", hint: "Ignored for PNG." },
-  ],
+  },
   allowedNetworkModes: ["OFFLINE"],
-  minIsolation: "docker-rootless",
-  limits: { cpuCores: 1, memoryBytes: 512 * MB, diskBytes: 1024 * MB, wallClockSeconds: 300, pids: 64 },
+  minimumIsolation: "docker-rootless",
+  limits: { cpuCores: 1, memoryBytes: 512 * MB, diskBytes: 1024 * MB, timeoutSeconds: 300, pidLimit: 64, maxOutputBytes: 50 * MB },
   idempotent: true,
   availability: { status: "available" },
 };
@@ -52,12 +49,12 @@ export const REPO_METADATA: WorkloadDefinition = {
   runsRequesterCode: false,
   needsSecrets: false,
   needsDeviceAccess: false,
-  inputSchema: { accept: ["text/plain"], maxFiles: 1, maxFileBytes: 64 * 1024, maxTotalBytes: 64 * 1024 },
-  outputSchema: { contentTypes: ["application/json"], maxFileBytes: MB },
-  params: [],
+  input: { contentTypes: ["text/plain"], maxFiles: 1, maxBytesPerFile: 64 * 1024, maxTotalBytes: 64 * 1024 },
+  output: { contentTypes: ["application/json"], maxBytesPerFile: MB },
+  paramsSchema: NO_PARAMS,
   allowedNetworkModes: ["RESTRICTED"],
-  minIsolation: "gvisor",
-  limits: { cpuCores: 1, memoryBytes: 256 * MB, diskBytes: 128 * MB, wallClockSeconds: 120, pids: 32 },
+  minimumIsolation: "gvisor",
+  limits: { cpuCores: 1, memoryBytes: 256 * MB, diskBytes: 128 * MB, timeoutSeconds: 120, pidLimit: 32, maxOutputBytes: 50 * MB },
   idempotent: true,
   availability: {
     status: "unavailable",
@@ -76,12 +73,12 @@ export const CUSTOM_CONTAINER: WorkloadDefinition = {
   runsRequesterCode: true,
   needsSecrets: false,
   needsDeviceAccess: false,
-  inputSchema: { accept: [], maxFiles: 0, maxFileBytes: 0, maxTotalBytes: 0 },
-  outputSchema: { contentTypes: [], maxFileBytes: 0 },
-  params: [],
+  input: { contentTypes: [], maxFiles: 0, maxBytesPerFile: 0, maxTotalBytes: 0 },
+  output: { contentTypes: [], maxBytesPerFile: 0 },
+  paramsSchema: NO_PARAMS,
   allowedNetworkModes: ["OFFLINE"],
-  minIsolation: "microvm",
-  limits: { cpuCores: 2, memoryBytes: 2048 * MB, diskBytes: 4096 * MB, wallClockSeconds: 900, pids: 256 },
+  minimumIsolation: "microvm",
+  limits: { cpuCores: 2, memoryBytes: 2048 * MB, diskBytes: 4096 * MB, timeoutSeconds: 900, pidLimit: 256, maxOutputBytes: 50 * MB },
   idempotent: false,
   availability: {
     status: "unavailable",

@@ -2,22 +2,26 @@
 
 import { useState } from "react";
 import { Button, Dialog, Toggle, Select, Field, Banner } from "@powermesh/ui";
-import { devApi, type DevFlags } from "@/lib/api";
+import { ApiError, devApi, type DevFlags } from "@/lib/api";
 
 /**
- * Mock-only rehearsal controls (master plan §8 working rhythm: rehearse with network failure and a
- * provider-kill scenario). Drives the simulator so every degraded/offline/retry state is reachable.
+ * Offline-demo rehearsal controls (Q30: explicit offline-demo mode only). Rehearse network failure and
+ * a provider-kill scenario: drives the simulator so every degraded/offline/retry state is reachable.
  */
 export function DemoControls() {
   const [open, setOpen] = useState(false);
   const [flags, setFlags] = useState<DevFlags>();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
 
   const load = async () => setFlags(await devApi.status());
   const send = async (action: string, value?: number) => {
     setBusy(true);
+    setError(undefined);
     try {
       setFlags(await devApi.send({ action, value }));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "That didn't work.");
     } finally {
       setBusy(false);
     }
@@ -40,7 +44,7 @@ export function DemoControls() {
         open={open}
         onClose={() => setOpen(false)}
         title="Demo controls"
-        description="Simulate failures to rehearse the demo. Mock coordinator only."
+        description="Simulate failures to rehearse the demo. Offline demo only."
         footer={
           <>
             <Button variant="secondary" icon="refresh" loading={busy} onClick={() => void send("reset")}>
@@ -61,14 +65,14 @@ export function DemoControls() {
               disabled={busy}
               onChange={(on) => void send(on ? "agent-reconnect" : "agent-disconnect")}
               label="Provider Agent connected"
-              description="Turn off to simulate the provider disappearing mid-job: heartbeats stop, the lease expires, and an idempotent job is requeued once."
+              description="Turn off to simulate the provider's Agent disappearing mid-job: heartbeats stop, the lease expires after 30 s plus a 10 s grace, and a job that's safe to repeat goes back to the queue once."
             />
             <Toggle
               checked={!flags.coordinatorDown}
               disabled={busy}
               onChange={(on) => void send(on ? "coordinator-up" : "coordinator-down")}
               label="Coordinator reachable"
-              description="Turn off to simulate a control-plane outage. Live streams drop and reconnect; the provider's local stop keeps working."
+              description="Turn off to simulate a control-plane outage. Live streams drop and reconnect. The Provider Console keeps working, because it talks to the Agent on the device."
             />
             <Toggle
               checked={Boolean(flags.incident)}
@@ -84,6 +88,11 @@ export function DemoControls() {
                 <option value="2">Narrated (×2)</option>
               </Select>
             </Field>
+            {error ? (
+              <Banner tone="danger" title="Not done" role="alert">
+                {error}
+              </Banner>
+            ) : null}
             {flags.coordinatorDown ? (
               <Banner tone="warning" title="Coordinator is down">
                 Coordinator API calls now fail with 503. Remember to turn it back on.

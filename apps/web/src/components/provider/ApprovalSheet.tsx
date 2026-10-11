@@ -2,10 +2,10 @@
 
 import { useRef, useState } from "react";
 import { Banner, Button, Dialog, Digest, Icon, KeyValue, cx, useAnnouncer } from "@powermesh/ui";
-import type { Offer } from "@/contracts-draft/types";
+import { paramSpecs, type Offer } from "@/contracts-draft/types";
 import { contentTypeLabel, formatBytes, formatDuration, formatMaybeBytes } from "@/contracts-draft/format";
 import { getWorkload } from "@/contracts-draft/workloads";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, agent } from "@/lib/api";
 import { useNow } from "@/lib/hooks";
 import { NETWORK_COPY } from "@/lib/copy";
 import { RiskExplanationView } from "@/components/common/JobBits";
@@ -33,12 +33,14 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
   const expired = offer.status === "expired" || (offer.status === "pending" && remaining <= 0);
   const pending = offer.status === "pending" && !expired;
   const workload = getWorkload(offer.workload.id);
+  const specs = workload ? paramSpecs(workload.paramsSchema) : [];
 
   const decide = async (decision: "approve" | "decline") => {
     setBusy(decision);
     setError(undefined);
     try {
-      const next = await api.decideOffer(offer.id, decision);
+      // Q21: decisions go to the Agent on this device, which signs them and tells the coordinator.
+      const next = await agent.decideOffer(offer.id, decision);
       announce(decision === "approve" ? "Approved once. Preparing the sandbox." : "Request declined.");
       onDecided(next);
     } catch (err) {
@@ -48,8 +50,8 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
     }
   };
 
-  const paramLabel = (key: string, value: string | number) => {
-    const spec = workload?.params.find((p) => p.key === key);
+  const paramLabel = (key: string, value: string | number | boolean) => {
+    const spec = specs.find((p) => p.key === key);
     if (!spec) return `${value}`;
     if (spec.type === "enum") return spec.options.find((o) => o.value === value)?.label ?? String(value);
     return `${value}${spec.unit ? ` ${spec.unit}` : ""}`;
@@ -95,16 +97,21 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
         ) : null}
         {expired ? (
           <Banner tone="neutral" title="Nothing will run">
-            The request expired before a decision. The requester has been told no provider accepted in time.
+            The request expired or was withdrawn before a decision, so nothing runs on this device.
           </Banner>
         ) : null}
         {offer.status === "auto_approved" ? (
           <Banner tone="info" title="Approved automatically by your policy">
-            {offer.policyRule}
+            {offer.policyRule?.label}
+            {offer.policyRule ? <span className="pm-small pm-mono"> ({offer.policyRule.code} · {offer.policyRule.policyVersion})</span> : null}
           </Banner>
         ) : null}
         {offer.status === "approved" ? <Banner tone="success" title="You approved this request once" /> : null}
-        {offer.status === "declined" ? <Banner tone="neutral" title="You declined this request" /> : null}
+        {offer.status === "declined" ? (
+          <Banner tone="neutral" title="You declined this request">
+            Nothing runs on this device, and the requester is told the job was declined.
+          </Banner>
+        ) : null}
 
         <section className={styles.sheetSection} aria-labelledby="sheet-what">
           <h3 id="sheet-what" className={styles.sheetHeading}>
@@ -146,7 +153,7 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
               { label: "Mounted as", value: "Read-only /input" },
               ...Object.entries(offer.params).map(([k, v]) => ({
                 key: k,
-                label: workload?.params.find((p) => p.key === k)?.label ?? k,
+                label: specs.find((p) => p.key === k)?.label ?? k,
                 value: paramLabel(k, v),
               })),
             ]}
@@ -163,8 +170,8 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
               { label: "CPU", value: `${offer.limits.cpuCores} core` },
               { label: "Memory", value: formatBytes(offer.limits.memoryBytes) },
               { label: "Disk", value: formatMaybeBytes(offer.limits.diskBytes) },
-              { label: "Time", value: formatDuration(offer.limits.wallClockSeconds) },
-              { label: "Processes", value: offer.limits.pids ?? "Not reported" },
+              { label: "Time", value: formatDuration(offer.limits.timeoutSeconds) },
+              { label: "Processes", value: offer.limits.pidLimit ?? "Not reported" },
               { label: "Network", value: `${NETWORK_COPY[offer.networkMode].label} — ${NETWORK_COPY[offer.networkMode].short}` },
             ]}
           />
@@ -193,7 +200,7 @@ export function ApprovalSheet({ offer, open, onClose, onDecided }: { offer: Offe
             </li>
           </ul>
           <p className="pm-small">
-            <Icon name="stop" size={12} /> You can stop the job at any time from the Provider Console — even if the coordinator is unreachable.
+            <Icon name="stop" size={12} /> You can stop the job at any time from this console. The stop is handled by the Agent on this device, so it works even if the coordinator is unreachable.
           </p>
         </section>
       </div>

@@ -22,7 +22,7 @@ import {
   type RiskTier,
   type WorkloadRequest,
 } from "@powermesh/contracts";
-import type { ApiErrorBody, ErrorCode, InputFileMeta, InputSummary, Job, RiskExplanation, SubmitJobRequest } from "@/contracts-draft/types";
+import type { ApiErrorBody, ErrorCode, InputFileMeta, InputSummary, Job, RiskBlockedDetails, RiskExplanation, SubmitJobRequest } from "@/contracts-draft/types";
 import { getWorkload, WORKLOADS } from "@/contracts-draft/workloads";
 import sampleManifest from "@/mock/sample-manifest.json";
 
@@ -60,6 +60,7 @@ export class BridgeError extends Error {
     public code: ErrorCode,
     message: string,
     public fields?: Record<string, string>,
+    public details?: Record<string, unknown>,
   ) {
     super(message);
   }
@@ -68,7 +69,7 @@ export class BridgeError extends Error {
 export function errorResponse(err: unknown): Response {
   const correlationId = `web_${randomUUID().slice(0, 8)}`;
   if (err instanceof BridgeError) {
-    const body: ApiErrorBody = { error: { code: err.code, message: err.message, fields: err.fields, correlationId } };
+    const body: ApiErrorBody = { error: { code: err.code, message: err.message, fields: err.fields, details: err.details, correlationId } };
     return Response.json(body, { status: err.status, headers: { "Cache-Control": "no-store" } });
   }
   console.error("[live bridge] unhandled", err);
@@ -78,11 +79,12 @@ export function errorResponse(err: unknown): Response {
 
 const UPSTREAM_CODE: Record<number, ErrorCode> = {
   400: "VALIDATION_FAILED",
-  401: "FORBIDDEN",
+  401: "UNAUTHENTICATED",
   403: "FORBIDDEN",
   404: "NOT_FOUND",
   409: "CONFLICT",
   410: "OFFER_EXPIRED",
+  413: "PAYLOAD_TOO_LARGE",
   422: "RISK_BLOCKED",
   429: "RATE_LIMITED",
 };
@@ -242,7 +244,7 @@ function explain(decision: RiskDecision, decidedAt: string): RiskExplanation {
   const effect = decision.tier === "BLOCKED" ? "blocks" : decision.tier === "LOW" ? "lowers" : "raises";
   return {
     tier: decision.tier,
-    facts: decision.reasons.map((label, i) => ({ code: `COORDINATOR_REASON_${i + 1}`, label, effect })),
+    facts: decision.reasons.map((label, i) => ({ code: `COORDINATOR_REASON_${i + 1}` as const, label, effect })),
     policyVersion: "coordinator v0",
     decidedAt,
   };
@@ -254,27 +256,31 @@ async function toView(job: CoordinatorJob): Promise<Job> {
   const inputs = memory.inputs.get(job.id) ?? { count: job.inputDigests.length, contentTypes: [], totalBytes: null };
   return {
     id: job.id,
-    requesterId: job.requesterId,
     requesterLabel: "You",
-    workloadId: workload?.id ?? job.workload.name,
-    workloadName: workload?.name ?? job.workload.name,
-    workloadVersion: job.workload.version,
-    workloadDigest: job.workload.imageDigest,
+    workload: { id: workload?.id ?? job.workload.name, name: workload?.name ?? job.workload.name, version: job.workload.version, digest: job.workload.imageDigest },
     params: job.params,
     inputs,
-    inputDigest: job.inputDigests[0] ?? "",
+    inputDigest: job.inputDigests[0],
     risk: explain({ ...decision, tier: job.riskTier }, job.createdAt),
     networkMode: job.resources.networkMode,
     limits: {
       cpuCores: job.resources.cpu,
       memoryBytes: job.resources.memoryMb * MB,
       diskBytes: null,
-      wallClockSeconds: job.resources.timeoutSeconds,
-      pids: null,
+      timeoutSeconds: job.resources.timeoutSeconds,
+      pidLimit: null,
+      maxOutputBytes: job.resources.maxOutputBytes,
     },
     // States are passed through verbatim — the UI renders coordinator states, it doesn't infer them.
     state: job.state,
     attempt: 1,
+    maxAttempts: 2,
+    assignment: null,
+    progress: null,
+    usage: null,
+    artifacts: [],
+    failure: null,
+    stoppedBy: null,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
   };
@@ -332,13 +338,13 @@ export async function submitJob(req: SubmitJobRequest): Promise<Job> {
   if (!workload) throw new BridgeError(400, "VALIDATION_FAILED", "Pick a workload from the catalogue.", { workloadId: "Unknown workload." });
 
   const { summary, digests } = inputsFor(req);
-  const outputCap = Math.min(50 * MB, workload.outputSchema.maxFileBytes * Math.max(1, summary.count));
+  const outputCap = Math.min(50 * MB, workload.output.maxBytesPerFile * Math.max(1, summary.count));
   const candidate = {
     workload: { name: workload.id, version: workload.version, imageDigest: workload.imageDigest },
     resources: {
       cpu: workload.limits.cpuCores,
       memoryMb: Math.round(workload.limits.memoryBytes / MB),
-      timeoutSeconds: workload.limits.wallClockSeconds,
+      timeoutSeconds: workload.limits.timeoutSeconds,
       maxOutputBytes: outputCap,
       networkMode: req.networkMode,
       allowedHosts: [],
@@ -365,7 +371,9 @@ export async function submitJob(req: SubmitJobRequest): Promise<Job> {
     body: JSON.stringify(parsed.data),
   });
   if (status === 422 && body.risk) {
-    throw new BridgeError(422, "RISK_BLOCKED", `Blocked before scheduling (${body.risk.tier} risk): ${body.risk.reasons.join(" ")}`);
+    // Q6: no job exists. API v0 doesn't return an auditEventId yet.
+    const details: RiskBlockedDetails = { risk: explain(body.risk, new Date().toISOString()) };
+    throw new BridgeError(422, "RISK_BLOCKED", "This request is blocked by the current safety policy.", undefined, { ...details });
   }
   if (status !== 201 || !body.job) raise(status, body);
 

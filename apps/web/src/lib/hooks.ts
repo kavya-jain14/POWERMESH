@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "./api";
-import { isTerminal, type Job, type JobEvent } from "@/contracts-draft/types";
+import { STREAM_TIMING, isTerminal, type Job, type JobEvent } from "@/contracts-draft/types";
 
 /* ── Polling resource ───────────────────────────────────────────────────── */
 
@@ -65,8 +65,9 @@ export function useResource<T>(fetcher: () => Promise<T>, { intervalMs, key }: {
 
 export type StreamStatus = "connecting" | "live" | "reconnecting" | "stale" | "ended";
 
-const STALE_AFTER_MS = 12_000; // > 2× the 5 s server heartbeat
-const MAX_BACKOFF_MS = 15_000;
+/** Q19 (packages/contracts protocolTiming): heartbeats every 5 s; stale after 12 s; reconnect backoff capped at 15 s. */
+const STALE_AFTER_MS = STREAM_TIMING.staleAfterSeconds * 1000;
+const MAX_BACKOFF_MS = STREAM_TIMING.maxBackoffSeconds * 1000;
 
 export interface JobStream {
   job: Job | undefined;
@@ -82,7 +83,8 @@ export interface JobStream {
  * Subscribes to GET /v1/jobs/:id/events.
  * - De-duplicates by `seq` and keeps events ordered — reconnects never double-render.
  * - Resumes from the last seen seq (Last-Event-ID natively; `?after=` on manual reconnect).
- * - Marks the stream stale after 12 s of silence; reconnects with exponential backoff.
+ * - Marks the stream stale after 12 s of silence (Q19); reconnects with exponential backoff.
+ * - Never reconnects after a terminal state event (Q18).
  * - Never invents state: the job snapshot is re-fetched on every state event.
  */
 export function useJobStream(jobId: string): JobStream {

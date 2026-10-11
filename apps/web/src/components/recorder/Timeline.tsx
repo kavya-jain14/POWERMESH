@@ -16,11 +16,21 @@ const MILESTONES: Array<{ label: string; states: JobState[] }> = [
 
 const FAILURE_STATES: JobState[] = ["REJECTED", "DECLINED", "EXPIRED", "FAILED", "CANCELLED", "TIMED_OUT"];
 
+/** Short tags for coded timeline events: the Agent's stop steps (Q22) and lease events (Q1, Q4). */
+const CODE_LABEL: Record<NonNullable<JobEvent["code"]>, string> = {
+  NETWORK_REVOKED: "Network off",
+  TERMINATION_REQUESTED: "Exit requested",
+  PROCESS_KILLED: "Stopped",
+  WORKSPACE_CLEANED: "Cleaned up",
+  HEARTBEAT_MISSED: "Heartbeat missed",
+  LEASE_EXPIRED: "Lease expired",
+};
+
 /** Compact milestone strip. Derived only from received state events — never guessed. */
 export function Milestones({ events, current }: { events: JobEvent[]; current: JobState | undefined }) {
   const attempt = Math.max(1, ...events.map((e) => e.attempt));
   const reached = new Set(events.filter((e) => e.type === "state" && e.attempt === attempt && e.state).map((e) => e.state!));
-  // Pre-requeue milestones stay reached for the current attempt.
+  // A retry re-enters at QUEUED (Q1), so the submit milestone stays reached for the new attempt.
   if (attempt > 1) reached.add("SUBMITTED");
   const failedAt = current && FAILURE_STATES.includes(current) ? current : undefined;
   const lastReachedIdx = MILESTONES.reduce((idx, m, i) => (m.states.some((s) => reached.has(s)) ? i : idx), -1);
@@ -50,7 +60,7 @@ export function Milestones({ events, current }: { events: JobEvent[]; current: J
   );
 }
 
-/** Append-only event list. Grouped by attempt so a requeue is visible, not hidden. */
+/** Append-only event list. Grouped by attempt so a retry is visible, not hidden (Q1). */
 export function Timeline({ events, showLogs }: { events: JobEvent[]; showLogs: boolean }) {
   const visible = events.filter((e) => e.type === "state" || showLogs || e.type === "progress");
   const attempts = [...new Set(visible.map((e) => e.attempt))];
@@ -76,7 +86,12 @@ export function Timeline({ events, showLogs }: { events: JobEvent[]; showLogs: b
                         <span className={styles.eventActor}>{e.actor.label}</span>
                       </div>
                     ) : null}
-                    {e.message ? <p className={styles.eventMessage}>{e.message}</p> : null}
+                    {e.message ? (
+                      <p className={styles.eventMessage}>
+                        {e.code ? <span className={styles.eventCode}>{CODE_LABEL[e.code]}</span> : null}
+                        {e.message}
+                      </p>
+                    ) : null}
                     {e.reason && e.type === "state" ? <p className={styles.eventReason}>Reason code: <code>{e.reason}</code></p> : null}
                   </div>
                 </li>

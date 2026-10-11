@@ -6,6 +6,8 @@ import type { ProviderNode, ProviderPolicy, Role } from "@/contracts-draft/types
 
 const MB = 1024 * 1024;
 const GB = 1024 * MB;
+/** Fixture community time zone (Q13: schedules use the provider's configured zone, never the browser's). */
+const TIMEZONE = "Asia/Kolkata";
 
 export interface MockUser {
   id: string;
@@ -42,7 +44,7 @@ export function seedNodes(now: number): ProviderNode[] {
         diskBytes: 20 * GB,
         accelerator: "none",
         networkModes: ["OFFLINE"],
-        isolation: { declared: ["docker-rootless", "gvisor"], verified: ["docker-rootless", "gvisor"], probedAt: iso(4 * 60_000) },
+        isolation: { declared: ["docker-rootless", "gvisor"], verified: ["docker-rootless", "gvisor"], probeStatus: "verified", probedAt: iso(4 * 60_000) },
       },
     },
     {
@@ -57,13 +59,14 @@ export function seedNodes(now: number): ProviderNode[] {
       heartbeatAt: iso(3 * 3600_000),
       status: "offline",
       capability: {
-        runtime: "vm",
+        runtime: "docker-rootless",
         cpuCores: 8,
         memoryBytes: 16 * GB,
         diskBytes: 40 * GB,
         accelerator: "none",
         networkModes: ["OFFLINE"],
-        isolation: { declared: ["vm"], verified: ["vm"], probedAt: iso(3 * 3600_000) },
+        // Offline since it was enrolled: the Agent hasn't probed isolation yet, so nothing counts (Q11).
+        isolation: { declared: ["docker-rootless"], verified: [], probeStatus: "pending", probedAt: null },
       },
     },
     {
@@ -78,14 +81,14 @@ export function seedNodes(now: number): ProviderNode[] {
       heartbeatAt: iso(40_000),
       status: "paused",
       capability: {
-        runtime: "vm",
+        runtime: "docker-rootless",
         cpuCores: 6,
         memoryBytes: 16 * GB,
         diskBytes: 30 * GB,
         accelerator: "none",
         networkModes: ["OFFLINE"],
-        // Declared but the Agent probe hasn't passed yet — UI must not claim VM isolation is active.
-        isolation: { declared: ["vm"], verified: [], probedAt: iso(40_000) },
+        // Declared but the Agent probe failed — the UI must not claim any isolation is active.
+        isolation: { declared: ["docker-rootless", "gvisor"], verified: [], probeStatus: "failed", probedAt: iso(40_000), failureCode: "ROOTLESS_REQUIRED" },
       },
     },
   ];
@@ -99,9 +102,9 @@ export function seedPolicies(now: number): ProviderPolicy[] {
       allowedWorkloads: ["image-transform"],
       riskMax: "LOW",
       consentMode: "ask",
-      schedule: { mode: "always" },
+      schedule: { mode: "always", timezone: TIMEZONE },
       networkModes: ["OFFLINE"],
-      resourceCaps: { cpuCores: 2, memoryBytes: 2 * GB, diskBytes: 5 * GB },
+      resourceCaps: { cpuCores: 2, memoryBytes: 2 * GB, diskBytes: 5 * GB, timeoutSeconds: 900, pidLimit: 128, maxOutputBytes: 100 * MB },
       updatedAt,
     },
     {
@@ -109,9 +112,9 @@ export function seedPolicies(now: number): ProviderPolicy[] {
       allowedWorkloads: ["image-transform"],
       riskMax: "LOW",
       consentMode: "auto",
-      schedule: { mode: "window", start: "18:00", end: "08:00" },
+      schedule: { mode: "window", start: "18:00", end: "08:00", timezone: TIMEZONE },
       networkModes: ["OFFLINE"],
-      resourceCaps: { cpuCores: 4, memoryBytes: 4 * GB, diskBytes: 10 * GB },
+      resourceCaps: { cpuCores: 4, memoryBytes: 4 * GB, diskBytes: 10 * GB, timeoutSeconds: 1800, pidLimit: 256, maxOutputBytes: 200 * MB },
       updatedAt,
     },
     {
@@ -119,9 +122,9 @@ export function seedPolicies(now: number): ProviderPolicy[] {
       allowedWorkloads: ["image-transform"],
       riskMax: "LOW",
       consentMode: "ask",
-      schedule: { mode: "always" },
+      schedule: { mode: "always", timezone: TIMEZONE },
       networkModes: ["OFFLINE"],
-      resourceCaps: { cpuCores: 2, memoryBytes: 2 * GB, diskBytes: 5 * GB },
+      resourceCaps: { cpuCores: 2, memoryBytes: 2 * GB, diskBytes: 5 * GB, timeoutSeconds: 900, pidLimit: 128, maxOutputBytes: 100 * MB },
       updatedAt,
     },
   ];

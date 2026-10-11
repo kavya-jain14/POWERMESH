@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Badge, Banner, Button, Digest, Icon, KeyValue, Panel } from "@powermesh/ui";
-import type { Artifact, Job } from "@/contracts-draft/types";
+import { isDownloadable, type Artifact, type Job } from "@/contracts-draft/types";
 import { contentTypeLabel, formatBytes, formatMaybeBytes, formatTime } from "@/contracts-draft/format";
 import { useNow } from "@/lib/hooks";
 import styles from "./Recorder.module.css";
@@ -10,18 +10,21 @@ import styles from "./Recorder.module.css";
 /**
  * G8 — only validated raster outputs preview inline, via <img> from a scoped URL.
  * SVG, HTML and anything else is download-only. Nothing is ever injected as markup.
+ * Q14 — a rejected artifact has no URL: it's never previewed or downloaded, but its checks stay visible.
  */
 const PREVIEWABLE = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 function canPreview(a: Artifact): boolean {
-  return PREVIEWABLE.has(a.contentType) && a.validation.length > 0 && a.validation.every((c) => c.passed);
+  return isDownloadable(a) && PREVIEWABLE.has(a.contentType);
 }
 
 export function ResultPanel({ job, onRefresh }: { job: Job; onRefresh: () => Promise<void> }) {
   const now = useNow(15_000);
   const artifacts = job.artifacts ?? [];
-  const total = artifacts.reduce((n, a) => n + a.size, 0);
-  const expired = artifacts.some((a) => Date.parse(a.urlExpiresAt) < now);
+  const validated = artifacts.filter(isDownloadable);
+  const rejected = artifacts.length - validated.length;
+  const total = validated.reduce((n, a) => n + a.sizeBytes, 0);
+  const expired = validated.some((a) => a.urlExpiresAt && Date.parse(a.urlExpiresAt) < now);
   const [refreshing, setRefreshing] = useState(false);
 
   if (artifacts.length === 0) {
@@ -35,9 +38,13 @@ export function ResultPanel({ job, onRefresh }: { job: Job; onRefresh: () => Pro
   return (
     <Panel
       variant="strong"
-      title="Validated result"
-      description={`${artifacts.length} file${artifacts.length === 1 ? "" : "s"} · ${formatMaybeBytes(job.inputs.totalBytes)} in → ${formatBytes(total)} out`}
-      actions={<Badge tone="success" icon="shield">All checks passed</Badge>}
+      title={rejected ? "Output validation" : "Validated result"}
+      description={
+        rejected
+          ? `${rejected} file${rejected === 1 ? "" : "s"} failed validation and ${rejected === 1 ? "was" : "were"} quarantined. Kept for audit — never previewed or downloadable.`
+          : `${artifacts.length} file${artifacts.length === 1 ? "" : "s"} · ${formatMaybeBytes(job.inputs.totalBytes)} in → ${formatBytes(total)} out`
+      }
+      actions={rejected ? <Badge tone="danger" icon="x">Rejected</Badge> : <Badge tone="success" icon="shield">All checks passed</Badge>}
     >
       {expired ? (
         <Banner
@@ -67,11 +74,13 @@ export function ResultPanel({ job, onRefresh }: { job: Job; onRefresh: () => Pro
           <li key={a.id} className={styles.artifact}>
             <div className={styles.artifactPreview}>
               {canPreview(a) && !expired ? (
-                <img src={a.url} alt={`Output image ${a.name}`} loading="lazy" decoding="async" referrerPolicy="no-referrer" />
+                <img src={a.url ?? undefined} alt={`Output image ${a.name}`} loading="lazy" decoding="async" referrerPolicy="no-referrer" />
               ) : (
                 <div className={styles.noPreview}>
-                  <Icon name="file" size={20} />
-                  <span>Preview not available for {contentTypeLabel(a.contentType)} files — download only.</span>
+                  <Icon name={isDownloadable(a) ? "file" : "x"} size={20} />
+                  <span>
+                    {!isDownloadable(a) ? "Failed validation — not shown and not downloadable." : `Preview not available for ${contentTypeLabel(a.contentType)} files — download only.`}
+                  </span>
                 </div>
               )}
             </div>
@@ -81,9 +90,9 @@ export function ResultPanel({ job, onRefresh }: { job: Job; onRefresh: () => Pro
                 columns={2}
                 items={[
                   { label: "Type", value: contentTypeLabel(a.contentType) },
-                  { label: "Size", value: formatBytes(a.size) },
+                  { label: "Size", value: formatBytes(a.sizeBytes) },
                   { label: "Digest (SHA-256)", value: <Digest value={a.digest} label={`digest of ${a.name}`} />, key: "digest" },
-                  { label: "Link expires", value: formatTime(a.urlExpiresAt) },
+                  { label: isDownloadable(a) ? "Link expires" : "Status", value: !isDownloadable(a) ? "Quarantined" : a.urlExpiresAt ? formatTime(a.urlExpiresAt) : "—" },
                 ]}
               />
               <ul role="list" className={styles.checks} aria-label={`Validation checks for ${a.name}`}>
@@ -97,16 +106,18 @@ export function ResultPanel({ job, onRefresh }: { job: Job; onRefresh: () => Pro
                   </li>
                 ))}
               </ul>
-              <a
-                className={styles.download}
-                href={`${a.url}&download=1`}
-                download={a.name}
-                aria-disabled={expired || undefined}
-                onClick={(e) => expired && e.preventDefault()}
-              >
-                <Icon name="download" />
-                Download {a.name}
-              </a>
+              {isDownloadable(a) ? (
+                <a
+                  className={styles.download}
+                  href={`${a.url}&download=1`}
+                  download={a.name}
+                  aria-disabled={expired || undefined}
+                  onClick={(e) => expired && e.preventDefault()}
+                >
+                  <Icon name="download" />
+                  Download {a.name}
+                </a>
+              ) : null}
             </div>
           </li>
         ))}

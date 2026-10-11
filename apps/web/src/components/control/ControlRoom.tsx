@@ -18,6 +18,14 @@ const HEALTH: Record<NetworkHealth["status"], { tone: Tone; label: string }> = {
   incident: { tone: "danger", label: "Incident" },
 };
 
+/** Q11: anything but a passed probe means nothing counts as verified. */
+const PROBE_LABEL: Record<ProviderNode["capability"]["isolation"]["probeStatus"], string> = {
+  verified: "None verified",
+  pending: "Probe pending",
+  failed: "Probe failed — none verified",
+  unsupported: "Not supported on this device",
+};
+
 const NODE_TONE: Record<ProviderNode["status"], Tone> = { available: "success", busy: "active", paused: "neutral", offline: "danger" };
 const NODE_LABEL: Record<ProviderNode["status"], string> = { available: "Available", busy: "Running a job", paused: "Paused", offline: "Offline" };
 
@@ -25,7 +33,7 @@ export function ControlRoom({ role }: { role: Role }) {
   const now = useNow(5000);
   const health = useResource(() => api.network(), { intervalMs: 3000 });
   const nodes = useResource(() => (role === "requester" ? Promise.resolve([] as ProviderNode[]) : api.listNodes()), { intervalMs: 5000 });
-  const jobs = useResource(() => api.listJobs(), { intervalMs: 3000 });
+  const jobs = useResource(() => api.listJobs({ limit: 100 }), { intervalMs: 3000 });
 
   if (health.loading) {
     return (
@@ -40,7 +48,7 @@ export function ControlRoom({ role }: { role: Role }) {
 
   const unreachable = health.error && (health.error.code === "UNAVAILABLE" || health.error.code === "NETWORK");
   const h = health.data;
-  const active = (jobs.data ?? []).filter((j) => !isTerminal(j.state));
+  const active = (jobs.data?.items ?? []).filter((j) => !isTerminal(j.state));
 
   return (
     <div className="pm-stack">
@@ -71,8 +79,14 @@ export function ControlRoom({ role }: { role: Role }) {
             </h2>
             <Badge tone={HEALTH[h.status].tone}>{HEALTH[h.status].label}</Badge>
           </div>
+          {/* Q16: status, reasonCode and reason are backend-owned; rendered as given, never derived here. */}
           <p className={styles.healthReason}>{h.reason}</p>
-          {h.incident ? <p className="pm-small">Incident opened {formatRelative(h.incident.openedAt, now)}. Admins are reviewing audit events.</p> : null}
+          {h.incident ? (
+            <p className="pm-small">
+              Incident: {h.incident.title}. Started {formatRelative(h.incident.startedAt, now)}.
+            </p>
+          ) : null}
+          {h.coordinator !== "online" ? <p className="pm-small">Coordinator: {h.coordinator}.</p> : null}
           <p className="pm-small pm-muted">Checked {formatRelative(h.checkedAt, now)}.</p>
         </section>
       ) : null}
@@ -170,7 +184,13 @@ export function ControlRoom({ role }: { role: Role }) {
                         <td>
                           <StatusDot tone={NODE_TONE[n.status]}>{NODE_LABEL[n.status]}</StatusDot>
                         </td>
-                        <td>{n.capability.isolation.verified.length ? n.capability.isolation.verified.join(", ") : <span className="pm-muted">None verified yet</span>}</td>
+                        <td>
+                          {n.capability.isolation.probeStatus === "verified" && n.capability.isolation.verified.length ? (
+                            n.capability.isolation.verified.join(", ")
+                          ) : (
+                            <span className="pm-muted">{PROBE_LABEL[n.capability.isolation.probeStatus]}</span>
+                          )}
+                        </td>
                         <td className="pm-muted">{formatRelative(n.heartbeatAt, now)}</td>
                       </tr>
                     ))}

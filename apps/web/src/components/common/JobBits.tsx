@@ -33,6 +33,7 @@ export function RiskExplanationView({ risk, heading = "Risk", compact = false }:
             <span>
               <span className="pm-visually-hidden">{effectLabel[f.effect]}: </span>
               {f.label}
+              {f.detail ? <span className={styles.riskFactDetail}> {f.detail}</span> : null}
             </span>
           </li>
         ))}

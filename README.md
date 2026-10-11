@@ -76,19 +76,23 @@ Approval Sheet, Control Room and Policy & Audit. Its design system lives in `pac
 
 The UI runs in one of two modes, set by `NEXT_PUBLIC_POWERMESH_MODE` in the root `.env`:
 
-- **`mock`** (default): an in-app mock coordinator under `/api/mock`. Every surface and state works with
-  no backend, for design work and demo rehearsal. A strip at the top of each page says so.
+- **`offline-demo`** (default; `mock` is an alias): an in-app simulator under `/api/mock` that follows the
+  v0 contract answers (`docs/handoff/answers-from-kavya.md`). It also simulates the provider's Agent local
+  API (ADR-002). Every surface and state works with no backend, for design work and demo rehearsal. A
+  strip at the top of each page says "Offline demo data". Off in production builds unless
+  `NEXT_PUBLIC_POWERMESH_OFFLINE_DEMO=1`.
 - **`live`**: job submission, job list, job detail and the live timeline go to the coordinator API
   through a server-side bridge (`/api/live/v1`). The bridge holds the enrollment credential and keeps
   the requester token in an httpOnly cookie, so no credential ever reaches browser JavaScript. Surfaces
-  with no API yet (provider console, offers, network health, audit) stay on mock data and say so.
+  with no API yet (provider console, offers, network health, audit) use the simulator in development
+  and say so.
 
 ```bash
 pnpm dev:api   # coordinator on :4000 (in-memory store unless DATABASE_URL is set)
 pnpm dev:web   # web on :3000
 ```
 
-Demo click path (mock mode, about 2 minutes):
+Demo click path (offline demo, about 2 minutes):
 
 1. **Requester** → New job → Demo sample set → Submit. Watch the Flight Recorder move through its states.
 2. Switch to **Provider** → "Review request" → read the Approval Sheet → **Approve once**.

@@ -1,20 +1,23 @@
 import { currentUser, errorResponse } from "@/mock/http";
-import { assertCoordinatorUp, eventView, getEvents, getJob, registerStream, state, subscribe } from "@/mock/store";
-import type { JobEvent } from "@/contracts-draft/types";
+import { assertCoordinatorUp, assertOfflineDemoEnabled, eventView, getEvents, getJob, registerStream, state, subscribe } from "@/mock/store";
+import { STREAM_TIMING, isTerminal, type JobEvent } from "@/contracts-draft/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const HEARTBEAT_MS = 5000;
+const HEARTBEAT_MS = STREAM_TIMING.heartbeatSeconds * 1000;
 
 /**
- * SSE job stream (proposal G1 §6 Q5): `id` = per-job seq for Last-Event-ID resume,
- * `event` = state | progress | log; plus un-numbered `heartbeat` events so the UI can detect staleness.
+ * SSE job stream (Q18): `id` = per-job seq for Last-Event-ID resume (wins over ?after=),
+ * `event` = state | progress | log. Heartbeats every 5 s (Q19) are sent as a named, un-numbered
+ * `heartbeat` event — not a comment line, which EventSource hides from scripts (follow-ups F3).
+ * A finished job replays its history and then the stream closes.
  */
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   let user;
   try {
+    assertOfflineDemoEnabled();
     user = await currentUser();
     assertCoordinatorUp();
     getJob(id, user);
@@ -41,6 +44,12 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
       write("retry: 2000\n\n");
       getEvents(id, user, lastId).forEach(send);
+      const current = state().jobs.get(id);
+      if (current && isTerminal(current.state)) {
+        closed = true;
+        controller.close();
+        return;
+      }
       const unsubscribe = subscribe(id, (e) => send(eventView(e, user)));
       const heartbeat = setInterval(() => {
         const job = state().jobs.get(id);

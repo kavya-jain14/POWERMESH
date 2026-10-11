@@ -1,12 +1,12 @@
 import { jobStates } from "@powermesh/contracts";
-import type { JobEvent } from "@/contracts-draft/types";
+import { STREAM_TIMING, type JobEvent } from "@/contracts-draft/types";
 import { BridgeError, COORDINATOR_TERMINAL, type CoordinatorJob, errorResponse, fetchJob } from "@/server/coordinator";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const POLL_MS = 2000;
-const HEARTBEAT_MS = 5000;
+const HEARTBEAT_MS = STREAM_TIMING.heartbeatSeconds * 1000;
 
 /**
  * Job stream for the Flight Recorder. API v0 has no event endpoint (job_events is stored but not
@@ -15,7 +15,7 @@ const HEARTBEAT_MS = 5000;
  * - Only states the coordinator actually reported are emitted; nothing is back-filled or guessed.
  * - `seq` is the state's position in the contracts' lifecycle order, so a reconnect with
  *   Last-Event-ID never re-renders a state the browser already has.
- * - Un-numbered `heartbeat` events keep the UI's stale detection honest.
+ * - Un-numbered `heartbeat` events every 10 s (Q19) keep the UI's stale detection honest (follow-ups F3).
  */
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -61,7 +61,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
             state: job.state,
             prevState,
             message: "Reported by the coordinator.",
-            actor: { role: "coordinator", label: "Coordinator" },
+            actor: { role: "system", label: "Coordinator" },
             at: job.updatedAt,
             correlationId: "",
             attempt: 1,
