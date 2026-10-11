@@ -1,9 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import { Badge, Banner, Button, Digest, Icon, KeyValue, Panel } from "@powermesh/ui";
-import { isDownloadable, type Artifact, type Job } from "@/contracts-draft/types";
-import { contentTypeLabel, formatBytes, formatMaybeBytes, formatTime } from "@/contracts-draft/format";
+import { useState } from "react";
+import {
+  contentTypeLabel,
+  formatBytes,
+  formatMaybeBytes,
+  formatTime,
+} from "@/contracts-draft/format";
+import { type Artifact, isDownloadable, type Job } from "@/contracts-draft/types";
 import { useNow } from "@/lib/hooks";
 import styles from "./Recorder.module.css";
 
@@ -44,7 +49,17 @@ export function ResultPanel({ job, onRefresh }: { job: Job; onRefresh: () => Pro
           ? `${rejected} file${rejected === 1 ? "" : "s"} failed validation and ${rejected === 1 ? "was" : "were"} quarantined. Kept for audit — never previewed or downloadable.`
           : `${artifacts.length} file${artifacts.length === 1 ? "" : "s"} · ${formatMaybeBytes(job.inputs.totalBytes)} in → ${formatBytes(total)} out`
       }
-      actions={rejected ? <Badge tone="danger" icon="x">Rejected</Badge> : <Badge tone="success" icon="shield">All checks passed</Badge>}
+      actions={
+        rejected ? (
+          <Badge tone="danger" icon="x">
+            Rejected
+          </Badge>
+        ) : (
+          <Badge tone="success" icon="shield">
+            All checks passed
+          </Badge>
+        )
+      }
     >
       {expired ? (
         <Banner
@@ -69,17 +84,30 @@ export function ResultPanel({ job, onRefresh }: { job: Job; onRefresh: () => Pro
           Links are short-lived on purpose. Fresh ones are issued when you ask.
         </Banner>
       ) : null}
-      <ul role="list" className={styles.artifacts}>
+      <ul
+        // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none, so the role is restored explicitly.
+        role="list"
+        className={styles.artifacts}
+      >
         {artifacts.map((a) => (
           <li key={a.id} className={styles.artifact}>
             <div className={styles.artifactPreview}>
               {canPreview(a) && !expired ? (
-                <img src={a.url ?? undefined} alt={`Output image ${a.name}`} loading="lazy" decoding="async" referrerPolicy="no-referrer" />
+                // biome-ignore lint/performance/noImgElement: artifact URLs are short-lived signed links; Next's image optimiser would proxy and cache them.
+                <img
+                  src={a.url ?? undefined}
+                  alt={`Transformed output ${a.name}`}
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                />
               ) : (
                 <div className={styles.noPreview}>
                   <Icon name={isDownloadable(a) ? "file" : "x"} size={20} />
                   <span>
-                    {!isDownloadable(a) ? "Failed validation — not shown and not downloadable." : `Preview not available for ${contentTypeLabel(a.contentType)} files — download only.`}
+                    {!isDownloadable(a)
+                      ? "Failed validation — not shown and not downloadable."
+                      : `Preview not available for ${contentTypeLabel(a.contentType)} files — download only.`}
                   </span>
                 </div>
               )}
@@ -91,16 +119,34 @@ export function ResultPanel({ job, onRefresh }: { job: Job; onRefresh: () => Pro
                 items={[
                   { label: "Type", value: contentTypeLabel(a.contentType) },
                   { label: "Size", value: formatBytes(a.sizeBytes) },
-                  { label: "Digest (SHA-256)", value: <Digest value={a.digest} label={`digest of ${a.name}`} />, key: "digest" },
-                  { label: isDownloadable(a) ? "Link expires" : "Status", value: !isDownloadable(a) ? "Quarantined" : a.urlExpiresAt ? formatTime(a.urlExpiresAt) : "—" },
+                  {
+                    label: "Digest (SHA-256)",
+                    value: <Digest value={a.digest} label={`digest of ${a.name}`} />,
+                    key: "digest",
+                  },
+                  {
+                    label: isDownloadable(a) ? "Link expires" : "Status",
+                    value: !isDownloadable(a)
+                      ? "Quarantined"
+                      : a.urlExpiresAt
+                        ? formatTime(a.urlExpiresAt)
+                        : "—",
+                  },
                 ]}
               />
-              <ul role="list" className={styles.checks} aria-label={`Validation checks for ${a.name}`}>
+              <ul
+                // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none, so the role is restored explicitly.
+                role="list"
+                className={styles.checks}
+                aria-label={`Validation checks for ${a.name}`}
+              >
                 {a.validation.map((c) => (
                   <li key={c.code} className={c.passed ? styles.checkOk : styles.checkBad}>
                     <Icon name={c.passed ? "check" : "x"} size={12} />
                     <span>
-                      <span className="pm-visually-hidden">{c.passed ? "Passed: " : "Failed: "}</span>
+                      <span className="pm-visually-hidden">
+                        {c.passed ? "Passed: " : "Failed: "}
+                      </span>
                       {c.label}
                     </span>
                   </li>

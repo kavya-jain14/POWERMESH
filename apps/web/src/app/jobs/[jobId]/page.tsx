@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import { FlightRecorder } from "@/components/recorder/FlightRecorder";
 import { getRole } from "@/lib/session";
 
-export async function generateMetadata({ params }: { params: Promise<{ jobId: string }> }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ jobId: string }>;
+}): Promise<Metadata> {
   return { title: `Job ${(await params).jobId}` };
 }
 

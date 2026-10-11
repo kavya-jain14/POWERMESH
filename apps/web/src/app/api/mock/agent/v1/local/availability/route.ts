@@ -7,7 +7,10 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   return handle(async (user) => {
     const body = await readJson<{ available?: unknown }>(req);
-    if (typeof body.available !== "boolean") throw new MockApiError(400, "VALIDATION_FAILED", "available must be true or false.", { available: "Required." });
+    if (typeof body.available !== "boolean")
+      throw new MockApiError(400, "VALIDATION_FAILED", "available must be true or false.", {
+        available: "Required.",
+      });
     return agentSetAvailability(user, body.available);
   });
 }

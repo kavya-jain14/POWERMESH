@@ -1,6 +1,15 @@
+import { isTerminal, type JobEvent, STREAM_TIMING } from "@/contracts-draft/types";
 import { currentUser, errorResponse } from "@/mock/http";
-import { assertCoordinatorUp, assertOfflineDemoEnabled, eventView, getEvents, getJob, registerStream, state, subscribe } from "@/mock/store";
-import { STREAM_TIMING, isTerminal, type JobEvent } from "@/contracts-draft/types";
+import {
+  assertCoordinatorUp,
+  assertOfflineDemoEnabled,
+  eventView,
+  getEvents,
+  getJob,
+  registerStream,
+  state,
+  subscribe,
+} from "@/mock/store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,7 +24,7 @@ const HEARTBEAT_MS = STREAM_TIMING.heartbeatSeconds * 1000;
  */
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  let user;
+  let user: Awaited<ReturnType<typeof currentUser>>;
   try {
     assertOfflineDemoEnabled();
     user = await currentUser();
@@ -26,7 +35,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   }
 
   const url = new URL(req.url);
-  const lastId = Number(req.headers.get("last-event-id") ?? url.searchParams.get("after") ?? 0) || 0;
+  const lastId =
+    Number(req.headers.get("last-event-id") ?? url.searchParams.get("after") ?? 0) || 0;
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -40,7 +50,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
           cleanup();
         }
       };
-      const send = (e: JobEvent) => write(`id: ${e.seq}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
+      const send = (e: JobEvent) =>
+        write(`id: ${e.seq}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
 
       write("retry: 2000\n\n");
       getEvents(id, user, lastId).forEach(send);
@@ -53,7 +64,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       const unsubscribe = subscribe(id, (e) => send(eventView(e, user)));
       const heartbeat = setInterval(() => {
         const job = state().jobs.get(id);
-        write(`event: heartbeat\ndata: ${JSON.stringify({ at: new Date().toISOString(), state: job?.state })}\n\n`);
+        write(
+          `event: heartbeat\ndata: ${JSON.stringify({ at: new Date().toISOString(), state: job?.state })}\n\n`,
+        );
       }, HEARTBEAT_MS);
 
       function cleanup() {

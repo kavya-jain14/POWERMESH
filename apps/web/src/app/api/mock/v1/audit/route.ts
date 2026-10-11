@@ -9,7 +9,12 @@ export async function GET(req: Request) {
   return handle((user) =>
     listAudit(
       user,
-      { jobId: p.get("jobId") ?? undefined, nodeId: p.get("nodeId") ?? undefined, type: p.get("type") ?? undefined, q: p.get("q") ?? undefined },
+      {
+        jobId: p.get("jobId") ?? undefined,
+        nodeId: p.get("nodeId") ?? undefined,
+        type: p.get("type") ?? undefined,
+        q: p.get("q") ?? undefined,
+      },
       { cursor: p.get("cursor"), limit: p.has("limit") ? Number(p.get("limit")) : null },
     ),
   );

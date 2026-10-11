@@ -1,6 +1,6 @@
+import { Icon } from "@powermesh/ui";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Icon } from "@powermesh/ui";
 import styles from "./common.module.css";
 
 export function PageHeader({

@@ -12,7 +12,13 @@ export interface ProgressBarProps {
   tone?: "default" | "success" | "danger" | "muted";
 }
 
-export function ProgressBar({ label, value, max = 100, valueText, tone = "default" }: ProgressBarProps) {
+export function ProgressBar({
+  label,
+  value,
+  max = 100,
+  valueText,
+  tone = "default",
+}: ProgressBarProps) {
   const pct = value === undefined ? undefined : Math.max(0, Math.min(100, (value / max) * 100));
   return (
     <div className={styles.wrap}>
@@ -29,7 +35,10 @@ export function ProgressBar({ label, value, max = 100, valueText, tone = "defaul
         aria-valuetext={valueText}
         aria-label={typeof label === "string" ? label : undefined}
       >
-        <div className={cx(styles.fill, pct === undefined && styles.indeterminate)} style={pct === undefined ? undefined : { width: `${pct}%` }} />
+        <div
+          className={cx(styles.fill, pct === undefined && styles.indeterminate)}
+          style={pct === undefined ? undefined : { width: `${pct}%` }}
+        />
       </div>
     </div>
   );
@@ -55,6 +64,7 @@ export function LimitMeter({ label, used, limit, format = String }: LimitMeterPr
           {format(used)} <span className={styles.of}>of {format(limit)} limit</span>
         </span>
       </div>
+      {/* biome-ignore lint/a11y/useSemanticElements: native <meter> can't be styled consistently across browsers; this div carries the full meter ARIA contract. */}
       <div
         className={cx(styles.track, styles.meter, near && styles.near)}
         role="meter"

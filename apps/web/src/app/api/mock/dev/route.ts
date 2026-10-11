@@ -1,5 +1,5 @@
 import { handle, readJson } from "@/mock/http";
-import { devControl, devStatus, type DevAction } from "@/mock/store";
+import { type DevAction, devControl, devStatus } from "@/mock/store";
 
 export const dynamic = "force-dynamic";
 

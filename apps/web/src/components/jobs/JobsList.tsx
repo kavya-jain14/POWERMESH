@@ -1,19 +1,30 @@
 "use client";
 
+import {
+  Banner,
+  Button,
+  buttonClassName,
+  EmptyState,
+  Icon,
+  Mono,
+  RiskBadge,
+  Skeleton,
+} from "@powermesh/ui";
 import Link from "next/link";
 import { useState } from "react";
-import { Banner, Button, EmptyState, Icon, Mono, RiskBadge, Skeleton, buttonClassName } from "@powermesh/ui";
-import type { Job, Role } from "@/contracts-draft/types";
+import { JobStateBadge } from "@/components/common/JobBits";
 import { formatInputs, formatRelative } from "@/contracts-draft/format";
+import type { Job, Role } from "@/contracts-draft/types";
 import { ApiError, api } from "@/lib/api";
 import { useNow, useResource } from "@/lib/hooks";
-import { JobStateBadge } from "@/components/common/JobBits";
 import styles from "./Jobs.module.css";
 
 /** Coordinator ids are UUIDs; the first block is enough to tell jobs apart on a card. */
 function displayJobId(id: string): string {
   return /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(id) ? `job ${id.slice(0, 8)}` : id;
 }
+
+const SKELETON_KEYS = ["sk-1", "sk-2", "sk-3", "sk-4"];
 
 export function JobsList({ role }: { role: Role }) {
   // The first page polls; older pages are fetched on demand with the opaque cursor (Q15).
@@ -44,8 +55,8 @@ export function JobsList({ role }: { role: Role }) {
     return (
       <div className={styles.grid} aria-busy="true">
         <span className="pm-visually-hidden">Loading jobs…</span>
-        {Array.from({ length: 4 }, (_, i) => (
-          <Skeleton key={i} height={232} />
+        {SKELETON_KEYS.map((key) => (
+          <Skeleton key={key} height={232} />
         ))}
       </div>
     );
@@ -69,7 +80,9 @@ export function JobsList({ role }: { role: Role }) {
           }
         >
           {jobs.error.message}
-          {stale && jobs.updatedAt ? ` Last updated ${formatRelative(new Date(jobs.updatedAt).toISOString(), now)}.` : null}
+          {stale && jobs.updatedAt
+            ? ` Last updated ${formatRelative(new Date(jobs.updatedAt).toISOString(), now)}.`
+            : null}
         </Banner>
       ) : null}
 
@@ -85,12 +98,19 @@ export function JobsList({ role }: { role: Role }) {
             ) : undefined
           }
         >
-          {role === "requester" ? "Submit a bounded job — like resizing a batch of images — and a community provider runs it in a sandbox." : "Jobs submitted in this community will appear here."}
+          {role === "requester"
+            ? "Submit a bounded job — like resizing a batch of images — and a community provider runs it in a sandbox."
+            : "Jobs submitted in this community will appear here."}
         </EmptyState>
       ) : null}
 
       {list && list.length > 0 ? (
-        <ul role="list" className={styles.grid} aria-label={role === "admin" ? "All jobs" : "Your jobs"}>
+        <ul
+          // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none, so the role is restored explicitly.
+          role="list"
+          className={styles.grid}
+          aria-label={role === "admin" ? "All jobs" : "Your jobs"}
+        >
           {list.map((job) => (
             <li key={job.id} className={styles.card}>
               <div className={styles.head}>
@@ -104,7 +124,8 @@ export function JobsList({ role }: { role: Role }) {
 
               <div>
                 <p className={styles.workload}>
-                  {job.workload.name} <span className={styles.version}>v{job.workload.version}</span>
+                  {job.workload.name}{" "}
+                  <span className={styles.version}>v{job.workload.version}</span>
                 </p>
                 {job.attempt > 1 ? <p className={styles.attempt}>Attempt {job.attempt}</p> : null}
               </div>
@@ -112,9 +133,7 @@ export function JobsList({ role }: { role: Role }) {
               <dl className={styles.facts}>
                 <div>
                   <dt className={styles.factLabel}>Inputs</dt>
-                  <dd className={styles.factValue}>
-                    {formatInputs(job.inputs)}
-                  </dd>
+                  <dd className={styles.factValue}>{formatInputs(job.inputs)}</dd>
                 </div>
                 <div>
                   <dt className={styles.factLabel}>Risk</dt>
@@ -145,7 +164,12 @@ export function JobsList({ role }: { role: Role }) {
 
       {nextCursor ? (
         <div className="pm-stack-sm" style={{ justifyItems: "start" }}>
-          <Button variant="secondary" icon="chevronDown" loading={loadingMore} onClick={() => void loadMore()}>
+          <Button
+            variant="secondary"
+            icon="chevronDown"
+            loading={loadingMore}
+            onClick={() => void loadMore()}
+          >
             Load older jobs
           </Button>
           {moreError ? (

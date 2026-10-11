@@ -1,12 +1,11 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
 import {
   Badge,
   Banner,
   Button,
+  buttonClassName,
+  cx,
   Dialog,
   Icon,
   KeyValue,
@@ -17,17 +16,30 @@ import {
   Skeleton,
   StatusDot,
   Toggle,
-  buttonClassName,
-  cx,
   useAnnouncer,
 } from "@powermesh/ui";
-import type { AgentLocalState, AgentStopEvent, IsolationCapability, IsolationLevel, Offer } from "@/contracts-draft/types";
-import { formatBytes, formatDuration, formatInputs, formatRelative, formatTime } from "@/contracts-draft/format";
-import { ApiError, USES_SIMULATOR, agent, api } from "@/lib/api";
-import { useNow, useResource } from "@/lib/hooks";
-import { NETWORK_COPY, STATE_COPY, describeJob } from "@/lib/copy";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { JobStateBadge } from "@/components/common/JobBits";
 import { PageHeader } from "@/components/common/PageHeader";
+import {
+  formatBytes,
+  formatDuration,
+  formatInputs,
+  formatRelative,
+  formatTime,
+} from "@/contracts-draft/format";
+import type {
+  AgentLocalState,
+  AgentStopEvent,
+  IsolationCapability,
+  IsolationLevel,
+  Offer,
+} from "@/contracts-draft/types";
+import { ApiError, agent, api, USES_SIMULATOR } from "@/lib/api";
+import { describeJob, NETWORK_COPY, STATE_COPY } from "@/lib/copy";
+import { useNow, useResource } from "@/lib/hooks";
 import { ApprovalSheet } from "./ApprovalSheet";
 import styles from "./Provider.module.css";
 
@@ -105,7 +117,9 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
 
   const s: AgentLocalState | undefined = local.data;
   // "Agent unreachable" only when the local origin itself can't answer (Q21 ui_impact).
-  const agentDown = Boolean(local.error && (local.error.code === "NETWORK" || local.error.code === "UNAVAILABLE"));
+  const agentDown = Boolean(
+    local.error && (local.error.code === "NETWORK" || local.error.code === "UNAVAILABLE"),
+  );
   const active = s?.activeJob ?? null;
   const stopRun = s?.stop && active && s.stop.jobId === active.id ? s.stop : null;
   const stopping = Boolean(stopRun && !stopRun.steps.some((x) => x.step === "PROCESS_KILLED"));
@@ -113,6 +127,7 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
   const coordinatorReachable = s?.coordinator.reachable ?? false;
 
   // Deep link /provider/offers/:id opens the sheet: the live pending offer from the Agent, or history from the coordinator.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs only when the deep link changes; the next effect keeps a pending offer in sync, so re-fetching on every Agent poll would be wasted work.
   useEffect(() => {
     if (!offerId) {
       setSheetOffer(undefined);
@@ -130,8 +145,6 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
     return () => {
       cancelled = true;
     };
-    // Re-run only when the deep link changes; the next effect keeps a pending offer in sync.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offerId, router]);
 
   // Keep the open sheet in sync with the live pending offer (expiry, auto-approval).
@@ -144,11 +157,14 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
     const offer = s?.pendingOffer;
     if (offer && seenOffer.current !== offer.id) {
       seenOffer.current = offer.id;
-      announce(`New request: ${offer.workload.name}, ${offer.risk.tier} risk. Review it before it expires.`);
+      announce(
+        `New request: ${offer.workload.name}, ${offer.risk.tier} risk. Review it before it expires.`,
+      );
     }
     const last = s?.lastJob;
     const key = last ? `${last.id}:${last.state}` : undefined;
-    if (key && lastJobKey.current && key !== lastJobKey.current && last) announce(`Job ${last.id}: ${STATE_COPY[last.state].badge}.`, "assertive");
+    if (key && lastJobKey.current && key !== lastJobKey.current && last)
+      announce(`Job ${last.id}: ${STATE_COPY[last.state].badge}.`, "assertive");
     if (key) lastJobKey.current = key;
   }, [s?.pendingOffer, s?.lastJob, announce]);
 
@@ -192,7 +208,10 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
       local.setData(await agent.setAvailability(on));
       announce(on ? "Accepting new requests." : "New requests paused.");
     } catch (err) {
-      announce(err instanceof ApiError ? err.message : "Couldn't change availability.", "assertive");
+      announce(
+        err instanceof ApiError ? err.message : "Couldn't change availability.",
+        "assertive",
+      );
     } finally {
       setToggling(false);
     }
@@ -215,7 +234,11 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
         <PageHeader title="Provider Console" />
         <Banner
           tone="danger"
-          title={local.error?.code === "FORBIDDEN" ? "This console is for the device's provider" : "Can't reach the PowerMesh Agent on this device"}
+          title={
+            local.error?.code === "FORBIDDEN"
+              ? "This console is for the device's provider"
+              : "Can't reach the PowerMesh Agent on this device"
+          }
           action={
             <Button size="sm" icon="refresh" onClick={() => void local.refresh()}>
               Try again
@@ -231,7 +254,17 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
   }
 
   const node = s.node;
-  const statusLabel = agentDown ? "Offline" : stopping ? "Stopping" : active ? "Running" : s.pendingOffer ? "Request pending" : node.status === "paused" ? "Paused" : "Available";
+  const statusLabel = agentDown
+    ? "Offline"
+    : stopping
+      ? "Stopping"
+      : active
+        ? "Running"
+        : s.pendingOffer
+          ? "Request pending"
+          : node.status === "paused"
+            ? "Paused"
+            : "Available";
   const lastStop = s.stop && s.lastJob && s.stop.jobId === s.lastJob.id ? s.stop : null;
   const iso = node.capability.isolation;
 
@@ -242,10 +275,27 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
         description={`Served by the PowerMesh Agent on this device${USES_SIMULATOR ? " (simulated in the offline demo)" : ""}. Every request needs your approval, and you can stop anything instantly.`}
         meta={
           <>
-            <Badge tone={statusLabel === "Available" ? "success" : statusLabel === "Running" ? "active" : statusLabel === "Offline" ? "danger" : "neutral"}>{statusLabel}</Badge>
-            <StatusDot tone={agentDown ? "danger" : "success"}>Agent on this device: {agentDown ? "not responding" : "running"}</StatusDot>
+            <Badge
+              tone={
+                statusLabel === "Available"
+                  ? "success"
+                  : statusLabel === "Running"
+                    ? "active"
+                    : statusLabel === "Offline"
+                      ? "danger"
+                      : "neutral"
+              }
+            >
+              {statusLabel}
+            </Badge>
+            <StatusDot tone={agentDown ? "danger" : "success"}>
+              Agent on this device: {agentDown ? "not responding" : "running"}
+            </StatusDot>
             <StatusDot tone={coordinatorReachable ? "success" : "warning"}>
-              Coordinator: {coordinatorReachable ? "reachable" : `unreachable · last contact ${formatRelative(s.coordinator.lastContactAt, now)}`}
+              Coordinator:{" "}
+              {coordinatorReachable
+                ? "reachable"
+                : `unreachable · last contact ${formatRelative(s.coordinator.lastContactAt, now)}`}
             </StatusDot>
           </>
         }
@@ -260,11 +310,16 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
       <div className="pm-stack">
         {/* Kill switch — persistently visible while anything can still run. */}
         {stoppable || stopping ? (
-          <div className={styles.killBar} role="region" aria-label="Running job controls">
+          <section className={styles.killBar} aria-label="Running job controls">
             <div className={styles.killInfo}>
               <p className={styles.killTitle}>
                 {stopping ? "Stopping…" : `Running ${active?.workload.name}`}
-                {active?.progress && !stopping ? <span className={styles.killMeta}> · {active.progress.done} of {active.progress.total} images</span> : null}
+                {active?.progress && !stopping ? (
+                  <span className={styles.killMeta}>
+                    {" "}
+                    · {active.progress.done} of {active.progress.total} images
+                  </span>
+                ) : null}
               </p>
               {stopRun ? (
                 <StopSteps stop={stopRun} />
@@ -286,31 +341,44 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
             >
               {stopping ? "Stopping" : "Stop job"}
             </Button>
-          </div>
+          </section>
         ) : null}
 
         {agentDown ? (
           <Banner tone="danger" title="The Agent on this device isn't responding">
-            Showing what it last reported. If a job was running, its lease expires and it&apos;s retried elsewhere once — nothing keeps running unattended.
+            Showing what it last reported. If a job was running, its lease expires and it&apos;s
+            retried elsewhere once — nothing keeps running unattended.
           </Banner>
         ) : !coordinatorReachable ? (
           <Banner tone="warning" title="Coordinator unreachable">
-            Your device is fine. Jobs already running continue, and <strong>Stop job still works</strong> — the Agent on this device handles it. New
+            Your device is fine. Jobs already running continue, and{" "}
+            <strong>Stop job still works</strong> — the Agent on this device handles it. New
             requests and your decisions wait until the coordinator is back.
           </Banner>
         ) : null}
 
         {s.pendingOffer ? (
-          <Panel variant="accent" eyebrow="Needs your decision" title={`New request: ${s.pendingOffer.workload.name}`}>
+          <Panel
+            variant="accent"
+            eyebrow="Needs your decision"
+            title={`New request: ${s.pendingOffer.workload.name}`}
+          >
             <div className={styles.offerRow}>
               <div className="pm-row">
                 <RiskBadge tier={s.pendingOffer.risk.tier} />
                 <span>
-                  {formatInputs(s.pendingOffer.inputs, "image")} · {NETWORK_COPY[s.pendingOffer.networkMode].label}
+                  {formatInputs(s.pendingOffer.inputs, "image")} ·{" "}
+                  {NETWORK_COPY[s.pendingOffer.networkMode].label}
                 </span>
-                <span className="pm-small">Expires in {Math.max(0, Math.ceil((Date.parse(s.pendingOffer.expiresAt) - now) / 1000))}s</span>
+                <span className="pm-small">
+                  Expires in{" "}
+                  {Math.max(0, Math.ceil((Date.parse(s.pendingOffer.expiresAt) - now) / 1000))}s
+                </span>
               </div>
-              <Link href={`/provider/offers/${s.pendingOffer.id}`} className={buttonClassName("secondary", "lg")}>
+              <Link
+                href={`/provider/offers/${s.pendingOffer.id}`}
+                className={buttonClassName("secondary", "lg")}
+              >
                 Review request
                 <Icon name="chevronRight" />
               </Link>
@@ -318,18 +386,31 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
           </Panel>
         ) : null}
 
-        {!stoppable && !stopping && s.lastJob?.state === "CANCELLED" && s.lastJob.stoppedBy?.reasonCode === "PROVIDER_STOP" && node.status === "paused" ? (
+        {!stoppable &&
+        !stopping &&
+        s.lastJob?.state === "CANCELLED" &&
+        s.lastJob.stoppedBy?.reasonCode === "PROVIDER_STOP" &&
+        node.status === "paused" ? (
           <Banner
             tone="warning"
             title={`Stopped by you at ${formatTime(s.lastJob.updatedAt)}: ${s.lastJob.workload.name}`}
             action={
-              <Button size="sm" variant="primary" loading={toggling} disabled={agentDown} onClick={() => void setAvailable(true)}>
+              <Button
+                size="sm"
+                variant="primary"
+                loading={toggling}
+                disabled={agentDown}
+                onClick={() => void setAvailable(true)}
+              >
                 Resume sharing
               </Button>
             }
           >
             <div className="pm-stack-sm">
-              <p>The sandbox process is gone and its workspace was cleaned up. New requests are paused until you resume.</p>
+              <p>
+                The sandbox process is gone and its workspace was cleaned up. New requests are
+                paused until you resume.
+              </p>
               {lastStop ? <StopSteps stop={lastStop} /> : null}
             </div>
           </Banner>
@@ -353,7 +434,10 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
               />
             </Panel>
 
-            <Panel title="Current job" actions={active ? <Link href={`/jobs/${active.id}`}>Open live view</Link> : undefined}>
+            <Panel
+              title="Current job"
+              actions={active ? <Link href={`/jobs/${active.id}`}>Open live view</Link> : undefined}
+            >
               {active ? (
                 <div className="pm-stack-sm">
                   <div className="pm-row">
@@ -361,19 +445,42 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
                     <span>{describeJob(active, "provider")}</span>
                   </div>
                   {active.progress ? (
-                    <ProgressBar label="Images processed" value={active.progress.done} max={active.progress.total} valueText={`${active.progress.done} of ${active.progress.total}`} />
+                    <ProgressBar
+                      label="Images processed"
+                      value={active.progress.done}
+                      max={active.progress.total}
+                      valueText={`${active.progress.done} of ${active.progress.total}`}
+                    />
                   ) : null}
                   {active.usage ? (
                     <>
-                      <LimitMeter label="CPU" used={active.usage.cpuCores} limit={active.limits.cpuCores} format={(n) => `${n.toFixed(2)} core`} />
-                      <LimitMeter label="Memory" used={active.usage.memoryBytes} limit={active.limits.memoryBytes} format={formatBytes} />
-                      <LimitMeter label="Time" used={active.usage.elapsedSeconds} limit={active.limits.timeoutSeconds} format={formatDuration} />
+                      <LimitMeter
+                        label="CPU"
+                        used={active.usage.cpuCores}
+                        limit={active.limits.cpuCores}
+                        format={(n) => `${n.toFixed(2)} core`}
+                      />
+                      <LimitMeter
+                        label="Memory"
+                        used={active.usage.memoryBytes}
+                        limit={active.limits.memoryBytes}
+                        format={formatBytes}
+                      />
+                      <LimitMeter
+                        label="Time"
+                        used={active.usage.elapsedSeconds}
+                        limit={active.limits.timeoutSeconds}
+                        format={formatDuration}
+                      />
                     </>
                   ) : null}
                 </div>
               ) : s.lastJob ? (
                 <p className="pm-muted">
-                  Nothing running. Last job <Link href={`/jobs/${s.lastJob.id}`}>{s.lastJob.id}</Link>: {STATE_COPY[s.lastJob.state].badge.toLowerCase()} {formatRelative(s.lastJob.updatedAt, now)}.
+                  Nothing running. Last job{" "}
+                  <Link href={`/jobs/${s.lastJob.id}`}>{s.lastJob.id}</Link>:{" "}
+                  {STATE_COPY[s.lastJob.state].badge.toLowerCase()}{" "}
+                  {formatRelative(s.lastJob.updatedAt, now)}.
                 </p>
               ) : (
                 <p className="pm-muted">Nothing running. Approved requests appear here.</p>
@@ -389,21 +496,46 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
                   items={[
                     { label: "System", value: `${OS_LABEL[node.os]} · ${node.arch}` },
                     { label: "Trust tier", value: node.trustTier },
-                    { label: "Shared CPU", value: `up to ${s.policy.resourceCaps.cpuCores} of ${node.capability.cpuCores} cores` },
-                    { label: "Shared memory", value: `up to ${formatBytes(s.policy.resourceCaps.memoryBytes)}` },
-                    { label: "Accelerator", value: node.capability.accelerator === "none" ? "None" : node.capability.accelerator },
+                    {
+                      label: "Shared CPU",
+                      value: `up to ${s.policy.resourceCaps.cpuCores} of ${node.capability.cpuCores} cores`,
+                    },
+                    {
+                      label: "Shared memory",
+                      value: `up to ${formatBytes(s.policy.resourceCaps.memoryBytes)}`,
+                    },
+                    {
+                      label: "Accelerator",
+                      value:
+                        node.capability.accelerator === "none"
+                          ? "None"
+                          : node.capability.accelerator,
+                    },
                     { label: "Last heartbeat", value: formatRelative(node.heartbeatAt, now) },
                   ]}
                 />
                 <div>
                   <p className={styles.isoHeading}>Isolation</p>
-                  <ul role="list" className={styles.isoList}>
+                  <ul
+                    // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none, so the role is restored explicitly.
+                    role="list"
+                    className={styles.isoList}
+                  >
                     {iso.declared.map((level) => {
                       // Q11: only a verified probe counts. Declared levels are never shown as active.
-                      const verified = iso.probeStatus === "verified" && iso.verified.includes(level);
+                      const verified =
+                        iso.probeStatus === "verified" && iso.verified.includes(level);
                       return (
                         <li key={level}>
-                          {verified ? <Badge tone="success" icon="check">Verified</Badge> : <Badge tone="warning" icon="alert">Not verified</Badge>}
+                          {verified ? (
+                            <Badge tone="success" icon="check">
+                              Verified
+                            </Badge>
+                          ) : (
+                            <Badge tone="warning" icon="alert">
+                              Not verified
+                            </Badge>
+                          )}
                           <span>{ISOLATION_LABEL[level]}</span>
                         </li>
                       );
@@ -411,7 +543,8 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
                   </ul>
                   <p className="pm-small pm-muted">
                     {PROBE_COPY[iso.probeStatus]}
-                    {iso.probedAt ? ` ${formatRelative(iso.probedAt, now)}` : ""}.{iso.failureCode ? ` ${PROBE_FAILURE_COPY[iso.failureCode]}` : ""} Only verified
+                    {iso.probedAt ? ` ${formatRelative(iso.probedAt, now)}` : ""}.
+                    {iso.failureCode ? ` ${PROBE_FAILURE_COPY[iso.failureCode]}` : ""} Only verified
                     levels are used for matching.
                   </p>
                 </div>
@@ -423,12 +556,24 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
                 items={[
                   { label: "Workloads", value: s.policy.allowedWorkloads.join(", ") || "None" },
                   { label: "Highest risk accepted", value: <RiskBadge tier={s.policy.riskMax} /> },
-                  { label: "Approval", value: s.policy.consentMode === "ask" ? "Ask me every time" : "Approve automatically when policy matches" },
+                  {
+                    label: "Approval",
+                    value:
+                      s.policy.consentMode === "ask"
+                        ? "Ask me every time"
+                        : "Approve automatically when policy matches",
+                  },
                   {
                     label: "When",
-                    value: s.policy.schedule.mode === "always" ? `Any time (${s.policy.schedule.timezone})` : `${s.policy.schedule.start}–${s.policy.schedule.end} ${s.policy.schedule.timezone}`,
+                    value:
+                      s.policy.schedule.mode === "always"
+                        ? `Any time (${s.policy.schedule.timezone})`
+                        : `${s.policy.schedule.start}–${s.policy.schedule.end} ${s.policy.schedule.timezone}`,
                   },
-                  { label: "Longest run", value: formatDuration(s.policy.resourceCaps.timeoutSeconds) },
+                  {
+                    label: "Longest run",
+                    value: formatDuration(s.policy.resourceCaps.timeoutSeconds),
+                  },
                 ]}
               />
             </Panel>
@@ -448,7 +593,13 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
             <Button variant="secondary" onClick={() => setConfirmStop(false)} disabled={sending}>
               Keep running
             </Button>
-            <Button ref={stopNowButton} variant="danger" icon="stop" loading={sending} onClick={() => void doStop()}>
+            <Button
+              ref={stopNowButton}
+              variant="danger"
+              icon="stop"
+              loading={sending}
+              onClick={() => void doStop()}
+            >
               Stop now
             </Button>
           </>
@@ -459,7 +610,10 @@ export function ProviderConsole({ offerId }: { offerId?: string }) {
             {stopError}
           </Banner>
         ) : (
-          <p className="pm-small pm-muted">Handled by the Agent on this device — works even if the coordinator is unreachable. Shortcut: Ctrl + .</p>
+          <p className="pm-small pm-muted">
+            Handled by the Agent on this device — works even if the coordinator is unreachable.
+            Shortcut: Ctrl + .
+          </p>
         )}
       </Dialog>
 

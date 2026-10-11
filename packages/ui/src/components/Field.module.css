@@ -181,6 +181,10 @@
   background: var(--pm-surface-sunken);
 }
 
+.choiceLabel {
+  font-weight: var(--pm-weight-medium);
+}
+
 .choiceDisabled .choiceLabel {
   color: var(--pm-ink-3);
 }
@@ -205,10 +209,6 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-
-.choiceLabel {
-  font-weight: var(--pm-weight-medium);
 }
 
 .choiceDesc {

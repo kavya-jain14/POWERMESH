@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isTerminal, type Job, type JobEvent, STREAM_TIMING } from "@/contracts-draft/types";
 import { ApiError, api } from "./api";
-import { STREAM_TIMING, isTerminal, type Job, type JobEvent } from "@/contracts-draft/types";
 
 /* ── Polling resource ───────────────────────────────────────────────────── */
 
@@ -21,7 +21,10 @@ export interface Resource<T> {
  * Fetch and optionally poll. Keeps the last good data when a refresh fails so screens can show
  * "stale" instead of blanking out (master plan §6: distinguish outage from empty).
  */
-export function useResource<T>(fetcher: () => Promise<T>, { intervalMs, key }: { intervalMs?: number; key?: string } = {}): Resource<T> {
+export function useResource<T>(
+  fetcher: () => Promise<T>,
+  { intervalMs, key }: { intervalMs?: number; key?: string } = {},
+): Resource<T> {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<ApiError>();
   const [updatedAt, setUpdatedAt] = useState<number>();
@@ -42,6 +45,7 @@ export function useResource<T>(fetcher: () => Promise<T>, { intervalMs, key }: {
     }
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `key` is the caller's explicit refetch trigger (the fetcher itself is read through a ref).
   useEffect(() => {
     setLoading(true);
     void refresh();
@@ -161,7 +165,8 @@ export function useJobStream(jobId: string): JobStream {
         setStatus("live");
         touch();
       };
-      for (const type of ["state", "progress", "log"]) source.addEventListener(type, ingest as EventListener);
+      for (const type of ["state", "progress", "log"])
+        source.addEventListener(type, ingest as EventListener);
       source.addEventListener("heartbeat", () => {
         touch();
         setStatus((s) => (s === "stale" ? "live" : s));

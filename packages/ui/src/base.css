@@ -20,17 +20,30 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-h1, h2, h3, h4, p, ul, ol, dl, dd, figure {
+h1,
+h2,
+h3,
+h4,
+p,
+ul,
+ol,
+dl,
+dd,
+figure {
   margin: 0;
 }
 
-h1, h2, h3, h4 {
+h1,
+h2,
+h3,
+h4 {
   line-height: var(--pm-leading-tight);
   font-weight: var(--pm-weight-bold);
   text-wrap: balance;
 }
 
-ul[role="list"], ol[role="list"] {
+ul[role="list"],
+ol[role="list"] {
   list-style: none;
   padding: 0;
 }
@@ -45,17 +58,25 @@ a:hover {
   text-decoration-thickness: 2px;
 }
 
-code, kbd, samp, pre {
+code,
+kbd,
+samp,
+pre {
   font-family: var(--pm-font-mono);
   font-size: 0.92em;
 }
 
-img, svg, video {
+img,
+svg,
+video {
   display: block;
   max-width: 100%;
 }
 
-button, input, select, textarea {
+button,
+input,
+select,
+textarea {
   font: inherit;
   color: inherit;
 }
@@ -72,6 +93,7 @@ button, input, select, textarea {
 }
 
 .pm-visually-hidden {
+  /* biome-ignore lint/complexity/noImportantStyles: a visually-hidden utility must beat any component's own positioning. */
   position: absolute !important;
   width: 1px;
   height: 1px;
@@ -84,6 +106,7 @@ button, input, select, textarea {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* biome-ignore-start lint/complexity/noImportantStyles: a user's reduced-motion preference must override every component animation. */
   *,
   *::before,
   *::after {
@@ -92,4 +115,5 @@ button, input, select, textarea {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  /* biome-ignore-end lint/complexity/noImportantStyles: end of reduced-motion overrides. */
 }

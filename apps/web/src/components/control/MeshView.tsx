@@ -26,7 +26,13 @@ export function MeshView({ nodes }: { nodes: ProviderNode[] }) {
           y1={y}
           x2={cx}
           y2={cy}
-          className={n.status === "offline" ? styles.linkOff : n.status === "busy" ? styles.linkBusy : styles.link}
+          className={
+            n.status === "offline"
+              ? styles.linkOff
+              : n.status === "busy"
+                ? styles.linkBusy
+                : styles.link
+          }
         />
       ))}
       <rect x={cx - 34} y={cy - 13} width={68} height={26} rx={6} className={styles.coord} />

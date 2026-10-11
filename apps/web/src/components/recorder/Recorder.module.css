@@ -277,7 +277,8 @@
   border: var(--pm-border);
   border-radius: var(--pm-radius-md);
   background:
-    repeating-conic-gradient(var(--pm-surface-sunken) 0% 25%, var(--pm-surface) 0% 50%) 0 0 / 16px 16px;
+    repeating-conic-gradient(var(--pm-surface-sunken) 0% 25%, var(--pm-surface) 0% 50%) 0 0 / 16px
+    16px;
 }
 
 .noPreview {
