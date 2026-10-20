@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  canonicalizeOfferManifest,
   type GpuBenchmarkResult,
   gpuBenchmarkResultSchema,
   type ProviderHeartbeat,
@@ -151,6 +152,19 @@ export class AgentJobLoop {
     return offerListSchema.parse(await response.json()).offers;
   }
 
+  private verifyTransitionOffer(input: unknown, expected: SignedJobOffer): SignedJobOffer {
+    const candidate = offerResponseSchema.parse(input).offer;
+    const verification = verifyCoordinatorOffer(candidate, this.options.coordinatorPublicKey);
+    if (
+      !verification.valid ||
+      candidate.id !== expected.id ||
+      canonicalizeOfferManifest(candidate.manifest) !== canonicalizeOfferManifest(expected.manifest)
+    ) {
+      throw new Error("COORDINATOR_OFFER_CHANGED");
+    }
+    return verification.offer;
+  }
+
   private async handleOffer(untrustedOffer: SignedJobOffer): Promise<JobLoopOutcome> {
     const verification = verifyCoordinatorOffer(untrustedOffer, this.options.coordinatorPublicKey);
     if (!verification.valid) {
@@ -169,17 +183,19 @@ export class AgentJobLoop {
       if (!(await this.options.approveOffer(offer))) {
         return { offerId: offer.id, status: "DECLINED" };
       }
-      offer = offerResponseSchema.parse(
+      offer = this.verifyTransitionOffer(
         await this.postJson(`/v1/nodes/${this.options.nodeId}/offers/${offer.id}/approve`),
-      ).offer;
+        offer,
+      );
     }
 
-    offer = offerResponseSchema.parse(
+    offer = this.verifyTransitionOffer(
       await this.postJson(`/v1/nodes/${this.options.nodeId}/offers/${offer.id}/claim`, {
         nonce: offer.manifest.nonce,
         leaseSeconds: Math.min(300, Math.max(15, offer.manifest.resources.timeoutSeconds + 10)),
       }),
-    ).offer;
+      offer,
+    );
 
     await this.postJson(`/v1/nodes/${this.options.nodeId}/jobs/${offer.manifest.jobId}/start`);
     const controller = new AbortController();

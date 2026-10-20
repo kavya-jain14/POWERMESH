@@ -26,6 +26,9 @@ export function validateOutput(
   data: Buffer,
   maxBytes: number,
 ): ValidatedOutput {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
+    throw new Error("Output size limit must be a nonnegative safe integer");
+  }
   const hasUnsafeCharacter = [...filename].some(
     (character) => character === "/" || character === "\\" || character.charCodeAt(0) < 32,
   );

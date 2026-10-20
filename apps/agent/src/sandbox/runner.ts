@@ -12,6 +12,7 @@ export async function executeSandboxJob(
   egress?: EgressNetworkController,
   signal?: AbortSignal,
 ): Promise<SandboxResult> {
+  signal?.throwIfAborted();
   if (job.networkMode === "OPEN_WEB") throw new Error("OPEN_WEB_FORBIDDEN");
   if (job.networkMode === "OFFLINE") return executor.execute(job, signal);
   if (!egress) throw new Error("CONTROLLED_EGRESS_REQUIRED");
@@ -22,6 +23,7 @@ export async function executeSandboxJob(
     timeoutMs: job.limits.timeoutSeconds * 1_000,
   });
   try {
+    signal?.throwIfAborted();
     return await executor.execute({ ...job, restrictedNetwork }, signal);
   } finally {
     await egress.cleanup(job.jobId);

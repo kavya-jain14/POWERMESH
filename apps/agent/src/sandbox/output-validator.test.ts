@@ -3,6 +3,22 @@ import { describe, expect, it } from "vitest";
 import { validateOutput } from "./output-validator";
 
 describe("sandbox output validation", () => {
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects an invalid output byte limit %s",
+    (limit) => {
+      expect(() => validateOutput("result.txt", "text/plain", Buffer.from("x"), limit)).toThrow(
+        /size limit/,
+      );
+    },
+  );
+
+  it("enforces zero and exact byte limits", () => {
+    expect(validateOutput("empty.txt", "text/plain", Buffer.alloc(0), 0).size).toBe(0);
+    expect(() => validateOutput("result.txt", "text/plain", Buffer.from("x"), 0)).toThrow(
+      /size limit/,
+    );
+    expect(validateOutput("result.txt", "text/plain", Buffer.from("x"), 1).size).toBe(1);
+  });
   it("accepts safe JSON and returns its digest", () => {
     const data = Buffer.from('{"ok":true}');
     expect(validateOutput("result.json", "application/json", data, 100)).toEqual({
