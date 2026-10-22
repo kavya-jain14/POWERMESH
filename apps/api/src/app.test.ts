@@ -268,6 +268,29 @@ describe("coordinator API", () => {
     expect(replay.statusCode).toBe(409);
     expect(replay.json().error).toBe("NONCE_ALREADY_USED");
 
+    const cancellation = await app.inject({
+      method: "POST",
+      url: `/v1/jobs/${jobId}/cancel`,
+      headers: { authorization: `Bearer ${requesterToken}` },
+    });
+    expect(cancellation.statusCode).toBe(202);
+    expect(cancellation.json().status).toBe("CANCEL_REQUESTED");
+
+    const commandHeartbeat = await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/heartbeat`,
+      headers: { authorization: `Bearer ${agentToken}` },
+      payload: {
+        availableCpu: 6,
+        availableMemoryMb: 6144,
+        activeJobs: 1,
+        status: "BUSY",
+      },
+    });
+    expect(commandHeartbeat.json().commands).toEqual([
+      { type: "CANCEL", jobId, reason: "REQUESTER_CANCEL" },
+    ]);
+
     const job = await app.inject({
       method: "GET",
       url: `/v1/jobs/${jobId}`,
@@ -635,6 +658,101 @@ describe("coordinator API", () => {
 
     expect(denied.statusCode).toBe(404);
     expect(allowed.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("lists only the requester's jobs with opaque cursor pagination", async () => {
+    const app = buildTestApp({ enrollmentKey, autoMatch: false });
+    const owner = await enrollRequester(app);
+    const stranger = await enrollRequester(app);
+    const submit = (token: string, format: "png" | "jpeg" | "webp") =>
+      app.inject({
+        method: "POST",
+        url: "/v1/jobs",
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          workloadId: imageTransformWorkloadId,
+          params: { format, maxWidth: 1280, quality: 85 },
+        },
+      });
+
+    const first = await submit(owner.requesterToken, "png");
+    const second = await submit(owner.requesterToken, "jpeg");
+    await submit(stranger.requesterToken, "webp");
+
+    const firstPage = await app.inject({
+      method: "GET",
+      url: "/v1/jobs?limit=1",
+      headers: { authorization: `Bearer ${owner.requesterToken}` },
+    });
+    expect(firstPage.statusCode).toBe(200);
+    expect(firstPage.json().items).toHaveLength(1);
+    expect(firstPage.json().nextCursor).toBeTruthy();
+
+    const secondPage = await app.inject({
+      method: "GET",
+      url: `/v1/jobs?limit=1&cursor=${firstPage.json().nextCursor}`,
+      headers: { authorization: `Bearer ${owner.requesterToken}` },
+    });
+    expect([firstPage.json().items[0].id, secondPage.json().items[0].id].sort()).toEqual(
+      [first.json().job.id, second.json().job.id].sort(),
+    );
+    expect(secondPage.json().nextCursor).toBeNull();
+    await app.close();
+  });
+
+  it("cancels a queued job and replays its terminal SSE history", async () => {
+    const app = buildTestApp({ enrollmentKey, autoMatch: false });
+    const owner = await enrollRequester(app);
+    const stranger = await enrollRequester(app);
+    const submission = await app.inject({
+      method: "POST",
+      url: "/v1/jobs",
+      headers: { authorization: `Bearer ${owner.requesterToken}` },
+      payload: {
+        workloadId: imageTransformWorkloadId,
+        params: { format: "png", maxWidth: 1024, quality: 80 },
+      },
+    });
+    const jobId = submission.json().job.id;
+
+    const denied = await app.inject({
+      method: "POST",
+      url: `/v1/jobs/${jobId}/cancel`,
+      headers: { authorization: `Bearer ${stranger.requesterToken}` },
+    });
+    expect(denied.statusCode).toBe(404);
+
+    const cancelled = await app.inject({
+      method: "POST",
+      url: `/v1/jobs/${jobId}/cancel`,
+      headers: { authorization: `Bearer ${owner.requesterToken}` },
+    });
+    expect(cancelled.statusCode).toBe(200);
+    expect(cancelled.json()).toMatchObject({ status: "CANCELLED", job: { state: "CANCELLED" } });
+
+    const events = await app.inject({
+      method: "GET",
+      url: `/v1/jobs/${jobId}/events`,
+      headers: { authorization: `Bearer ${owner.requesterToken}` },
+    });
+    expect(events.statusCode).toBe(200);
+    expect(events.headers["content-type"]).toContain("text/event-stream");
+    expect(events.body).toContain("event: state");
+    expect(events.body).toContain('"state":"CANCELLED"');
+    expect(events.body).toContain('"reasonCode":"REQUESTER_CANCEL"');
+
+    const resumed = await app.inject({
+      method: "GET",
+      url: `/v1/jobs/${jobId}/events?after=1`,
+      headers: {
+        authorization: `Bearer ${owner.requesterToken}`,
+        "last-event-id": "2",
+      },
+    });
+    expect(resumed.body).not.toContain("id: 1\n");
+    expect(resumed.body).not.toContain("id: 2\n");
+    expect(resumed.body).toContain("id: 3\n");
     await app.close();
   });
 

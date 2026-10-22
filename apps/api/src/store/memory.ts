@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { SignedJobOffer } from "@powermesh/contracts";
+import { EventEmitter } from "node:events";
+import type { AgentCommand, JobState, SignedJobOffer } from "@powermesh/contracts";
 import { assertJobTransition } from "@powermesh/contracts";
 import {
+  type CancelRequesterJobResult,
   type CoordinatorStore,
+  type JobEventRecord,
+  type JobListCursor,
   type JobRecord,
   type ProviderNodeRecord,
   providerCanRunJob,
@@ -24,6 +28,7 @@ const capacityReservingStates = new Set([
   "OFFERED",
   "APPROVED",
   "CLAIMED",
+  "STAGING",
   "RUNNING",
   "VALIDATING",
 ]);
@@ -34,6 +39,39 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
   private readonly nodes = new Map<string, StoredNode>();
   private readonly offers = new Map<string, StoredOffer>();
   private readonly requesters = new Map<string, { record: RequesterRecord; tokenHash: string }>();
+  private readonly events = new Map<string, JobEventRecord[]>();
+  private readonly commands = new Map<string, AgentCommand[]>();
+  private readonly eventEmitter = new EventEmitter();
+  private nextEventSequence = 1;
+
+  private appendEvent(
+    jobId: string,
+    actor: string,
+    eventType: string,
+    fromState: JobState | null,
+    toState: JobState,
+    correlationId: string,
+    safePayload: Record<string, unknown> = {},
+    createdAt = new Date().toISOString(),
+  ): void {
+    const event: JobEventRecord = {
+      sequence: this.nextEventSequence++,
+      id: randomUUID(),
+      jobId,
+      actor,
+      eventType,
+      fromState,
+      toState,
+      correlationId,
+      safePayload,
+      createdAt,
+      attempt: typeof safePayload.attempt === "number" ? safePayload.attempt : 1,
+    };
+    const events = this.events.get(jobId) ?? [];
+    events.push(event);
+    this.events.set(jobId, events);
+    this.eventEmitter.emit(jobId);
+  }
 
   private effectiveProviderCapacity(node: ProviderNodeRecord): ProviderNodeRecord {
     let reservedCpu = 0;
@@ -58,7 +96,9 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
     };
   }
 
-  async close(): Promise<void> {}
+  async close(): Promise<void> {
+    this.eventEmitter.removeAllListeners();
+  }
 
   async registerRequester(
     input: Parameters<CoordinatorStore["registerRequester"]>[0],
@@ -100,12 +140,143 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
       updatedAt: now,
     };
     this.jobs.set(job.id, job);
+    const correlationId = randomUUID();
+    this.appendEvent(
+      job.id,
+      "REQUESTER",
+      "JOB_SUBMITTED",
+      null,
+      "SUBMITTED",
+      correlationId,
+      {},
+      now,
+    );
+    this.appendEvent(
+      job.id,
+      "POLICY_ENGINE",
+      "POLICY_ACCEPTED",
+      "SUBMITTED",
+      "POLICY_CHECKED",
+      correlationId,
+      { riskTier: risk.tier, reasons: risk.reasons },
+      now,
+    );
     return structuredClone(job);
   }
 
   async findJob(id: string): Promise<JobRecord | null> {
     const job = this.jobs.get(id);
     return job ? structuredClone(job) : null;
+  }
+
+  async listRequesterJobs(
+    requesterId: string,
+    limit: number,
+    cursor?: JobListCursor,
+  ): Promise<{ items: JobRecord[]; nextCursor: JobListCursor | null }> {
+    const eligible = [...this.jobs.values()]
+      .filter((job) => job.requesterId === requesterId)
+      .filter(
+        (job) =>
+          !cursor ||
+          job.createdAt < cursor.createdAt ||
+          (job.createdAt === cursor.createdAt && job.id < cursor.id),
+      )
+      .sort(
+        (left, right) =>
+          right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id),
+      );
+    const page = eligible.slice(0, limit + 1);
+    const items = page.slice(0, limit);
+    const last = page.length > limit ? items.at(-1) : undefined;
+    return {
+      items: items.map((job) => structuredClone(job)),
+      nextCursor: last ? { createdAt: last.createdAt, id: last.id } : null,
+    };
+  }
+
+  async listJobEvents(jobId: string, afterSequence: number): Promise<JobEventRecord[]> {
+    return (this.events.get(jobId) ?? [])
+      .filter((event) => event.sequence > afterSequence)
+      .map((event) => structuredClone(event));
+  }
+
+  async waitForJobEvents(jobId: string, afterSequence: number, timeoutMs: number): Promise<void> {
+    if ((this.events.get(jobId) ?? []).some((event) => event.sequence > afterSequence)) return;
+    await new Promise<void>((resolve) => {
+      const onEvent = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        this.eventEmitter.off(jobId, onEvent);
+        resolve();
+      }, timeoutMs);
+      this.eventEmitter.once(jobId, onEvent);
+    });
+  }
+
+  async cancelRequesterJob(
+    jobId: string,
+    requesterId: string,
+    correlationId: string,
+  ): Promise<CancelRequesterJobResult> {
+    const job = this.jobs.get(jobId);
+    if (!job || job.requesterId !== requesterId) return { ok: false, reason: "JOB_NOT_FOUND" };
+    const directlyCancellable = new Set<JobState>([
+      "SUBMITTED",
+      "POLICY_CHECKED",
+      "QUEUED",
+      "OFFERED",
+      "APPROVED",
+    ]);
+    const commandCancellable = new Set<JobState>(["CLAIMED", "STAGING", "RUNNING", "VALIDATING"]);
+    const now = new Date().toISOString();
+
+    if (directlyCancellable.has(job.state)) {
+      assertJobTransition(job.state, "CANCELLED");
+      const updated = { ...job, state: "CANCELLED" as const, updatedAt: now };
+      this.jobs.set(job.id, updated);
+      this.appendEvent(
+        job.id,
+        "REQUESTER",
+        "JOB_CANCELLED",
+        job.state,
+        "CANCELLED",
+        correlationId,
+        { reasonCode: "REQUESTER_CANCEL" },
+        now,
+      );
+      return { ok: true, value: structuredClone(updated), status: "CANCELLED" };
+    }
+
+    if (!commandCancellable.has(job.state)) return { ok: false, reason: "INVALID_STATE" };
+    const assignment = [...this.offers.values()].find(
+      ({ record }) => record.manifest.jobId === jobId,
+    );
+    if (!assignment) return { ok: false, reason: "INVALID_STATE" };
+    const nodeId = assignment.record.manifest.nodeId;
+    const commands = this.commands.get(nodeId) ?? [];
+    const alreadyRequested = commands.some((command) => command.jobId === jobId);
+    if (!alreadyRequested) {
+      commands.push({ type: "CANCEL", jobId, reason: "REQUESTER_CANCEL" });
+      this.commands.set(nodeId, commands);
+      this.appendEvent(
+        job.id,
+        "REQUESTER",
+        "CANCEL_REQUESTED",
+        job.state,
+        job.state,
+        correlationId,
+        { reasonCode: "REQUESTER_CANCEL" },
+        now,
+      );
+    }
+    return { ok: true, value: structuredClone(job), status: "CANCEL_REQUESTED" };
+  }
+
+  async listAgentCommands(nodeId: string): Promise<AgentCommand[]> {
+    return structuredClone(this.commands.get(nodeId) ?? []);
   }
 
   async listPolicyCheckedJobs(limit: number): Promise<JobRecord[]> {
@@ -119,9 +290,9 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
   async transitionJob(
     id: string,
     nextState: Parameters<CoordinatorStore["transitionJob"]>[1],
-    _actor: string,
-    _correlationId: string,
-    _safePayload: Record<string, unknown> = {},
+    actor: string,
+    correlationId: string,
+    safePayload: Record<string, unknown> = {},
   ): Promise<JobRecord | null> {
     const job = this.jobs.get(id);
     if (!job) return null;
@@ -129,6 +300,16 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
     assertJobTransition(job.state, nextState);
     const updated = { ...job, state: nextState, updatedAt: new Date().toISOString() };
     this.jobs.set(id, updated);
+    this.appendEvent(
+      id,
+      actor,
+      "STATE_TRANSITION",
+      job.state,
+      nextState,
+      correlationId,
+      safePayload,
+      updated.updatedAt,
+    );
     return structuredClone(updated);
   }
 
@@ -206,6 +387,16 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
     assertJobTransition(job.state, "OFFERED");
     this.jobs.set(job.id, { ...job, state: "OFFERED", updatedAt: offer.manifest.issuedAt });
     this.offers.set(offer.id, { record: structuredClone(offer), nonceConsumedAt: null });
+    this.appendEvent(
+      job.id,
+      "COORDINATOR",
+      "OFFER_CREATED",
+      job.state,
+      "OFFERED",
+      randomUUID(),
+      { offerId: offer.id, expiresAt: offer.manifest.expiresAt },
+      offer.manifest.issuedAt,
+    );
     return { ok: true, value: structuredClone(offer) };
   }
 
@@ -237,6 +428,16 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
       if (job.state === "OFFERED") {
         assertJobTransition(job.state, "EXPIRED");
         this.jobs.set(job.id, { ...job, state: "EXPIRED", updatedAt: now });
+        this.appendEvent(
+          job.id,
+          "COORDINATOR",
+          "OFFER_EXPIRED",
+          job.state,
+          "EXPIRED",
+          randomUUID(),
+          { offerId },
+          now,
+        );
       }
       return { ok: false, reason: "OFFER_EXPIRED" };
     }
@@ -246,6 +447,16 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
     const record = { ...stored.record, approvedAt: now };
     this.offers.set(offerId, { ...stored, record });
     this.jobs.set(job.id, { ...job, state: "APPROVED", updatedAt: now });
+    this.appendEvent(
+      job.id,
+      "PROVIDER",
+      "OFFER_APPROVED",
+      job.state,
+      "APPROVED",
+      randomUUID(),
+      { offerId, nodeId },
+      now,
+    );
     return { ok: true, value: structuredClone(record) };
   }
 
@@ -267,6 +478,16 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
       if (job.state === "APPROVED") {
         assertJobTransition(job.state, "EXPIRED");
         this.jobs.set(job.id, { ...job, state: "EXPIRED", updatedAt: now });
+        this.appendEvent(
+          job.id,
+          "COORDINATOR",
+          "OFFER_EXPIRED",
+          job.state,
+          "EXPIRED",
+          randomUUID(),
+          { offerId },
+          now,
+        );
       }
       return { ok: false, reason: "OFFER_EXPIRED" };
     }
@@ -276,6 +497,16 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
     const record = { ...stored.record, claimedAt: now, leaseUntil };
     this.offers.set(offerId, { record, nonceConsumedAt: now });
     this.jobs.set(job.id, { ...job, state: "CLAIMED", updatedAt: now });
+    this.appendEvent(
+      job.id,
+      "PROVIDER_AGENT",
+      "OFFER_CLAIMED",
+      job.state,
+      "CLAIMED",
+      randomUUID(),
+      { offerId, nodeId, leaseUntil },
+      now,
+    );
     return { ok: true, value: structuredClone(record) };
   }
 
@@ -283,9 +514,9 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
     jobId: string,
     nodeId: string,
     nextState: Parameters<CoordinatorStore["transitionAssignedJob"]>[2],
-    _actor: string,
-    _correlationId: string,
-    _safePayload: Record<string, unknown> = {},
+    actor: string,
+    correlationId: string,
+    safePayload: Record<string, unknown> = {},
   ): Promise<StoreResult<JobRecord>> {
     const job = this.jobs.get(jobId);
     if (!job) return { ok: false, reason: "JOB_NOT_FOUND" };
@@ -309,6 +540,16 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
     }
     const updated = { ...job, state: nextState, updatedAt: new Date().toISOString() };
     this.jobs.set(jobId, updated);
+    this.appendEvent(
+      jobId,
+      actor,
+      "AGENT_STATE_TRANSITION",
+      job.state,
+      nextState,
+      correlationId,
+      safePayload,
+      updated.updatedAt,
+    );
     return { ok: true, value: structuredClone(updated) };
   }
 

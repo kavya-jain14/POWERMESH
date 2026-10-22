@@ -3,12 +3,18 @@ import rateLimit from "@fastify/rate-limit";
 import {
   classifyRisk,
   executionCompletionSchema,
+  isTerminalJobState,
   jobCreationSchema,
+  jobEventReasonCodeSchema,
+  jobProgressSchema,
   offerClaimSchema,
   offerCreationSchema,
+  pageQuerySchema,
+  protocolTiming,
   providerHeartbeatSchema,
   providerRegistrationSchema,
   requesterRegistrationSchema,
+  resourceUsageSchema,
   workloadRequestSchema,
 } from "@powermesh/contracts";
 import Fastify from "fastify";
@@ -23,7 +29,9 @@ import {
 } from "./auth/tokens";
 import { CoordinatorMatcher } from "./matcher";
 import { createOfferSigner, type OfferSigner } from "./offers/signing";
+import { decodeJobCursor, encodeJobCursor } from "./pagination";
 import { type CoordinatorStore, MemoryCoordinatorStore } from "./store";
+import type { JobEventRecord } from "./store/types";
 import { createConfiguredWorkloadCatalog, type WorkloadCatalog } from "./workloads/catalog";
 
 interface BuildAppOptions {
@@ -88,6 +96,71 @@ export function buildApp(options: BuildAppOptions = {}) {
     return 409;
   }
 
+  function eventActor(actor: string) {
+    if (actor === "REQUESTER") return { role: "requester" as const, label: "Requester" };
+    if (actor === "PROVIDER") return { role: "provider" as const, label: "Provider" };
+    if (actor.includes("AGENT")) return { role: "agent" as const, label: "Provider Agent" };
+    if (actor.includes("ADMIN")) return { role: "admin" as const, label: "Administrator" };
+    return { role: "system" as const, label: "PowerMesh" };
+  }
+
+  const requesterEventPayloadKeys = new Set([
+    "attempt",
+    "expiresAt",
+    "exitCode",
+    "gpuResultMatches",
+    "keyId",
+    "leaseUntil",
+    "message",
+    "outputTruncated",
+    "outputValidated",
+    "outputWithinLimits",
+    "progress",
+    "reasonCode",
+    "reasons",
+    "retryScheduled",
+    "riskTier",
+    "stderrDigest",
+    "stdoutDigest",
+    "timedOut",
+    "usage",
+  ]);
+
+  function requesterSafePayload(payload: Record<string, unknown>): Record<string, unknown> {
+    return Object.fromEntries(
+      Object.entries(payload).filter(([key]) => requesterEventPayloadKeys.has(key)),
+    );
+  }
+
+  function eventView(event: JobEventRecord) {
+    const safePayload = requesterSafePayload(event.safePayload);
+    const progress = jobProgressSchema.safeParse(safePayload.progress);
+    const usage = resourceUsageSchema.safeParse(safePayload.usage);
+    const reasonCode = jobEventReasonCodeSchema.safeParse(safePayload.reasonCode);
+    const isProgress = event.eventType === "PROGRESS";
+    const isState = event.fromState !== event.toState || event.eventType === "JOB_SUBMITTED";
+    return {
+      seq: event.sequence,
+      id: event.id,
+      jobId: event.jobId,
+      type: isProgress ? ("progress" as const) : isState ? ("state" as const) : ("log" as const),
+      ...(isState
+        ? { state: event.toState, ...(event.fromState ? { prevState: event.fromState } : {}) }
+        : {}),
+      ...(progress.success ? { progress: progress.data } : {}),
+      ...(usage.success ? { usage: usage.data } : {}),
+      ...(typeof safePayload.message === "string"
+        ? { message: safePayload.message.slice(0, 500) }
+        : {}),
+      ...(reasonCode.success ? { reasonCode: reasonCode.data } : {}),
+      actor: eventActor(event.actor),
+      at: event.createdAt,
+      correlationId: event.correlationId,
+      attempt: Math.min(2, Math.max(1, event.attempt)),
+      safePayload,
+    };
+  }
+
   app.after(() => {
     app.addHook("onClose", async () => {
       await store.close();
@@ -143,6 +216,32 @@ export function buildApp(options: BuildAppOptions = {}) {
         }
         const explanation = await riskExplainer.explain(parsed.data);
         return { tier: parsed.data.tier, explanation };
+      },
+    );
+
+    app.get(
+      "/v1/jobs",
+      { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const requester = await authenticateRequester(request.headers.authorization);
+        if (!requester) {
+          return reply.code(401).send({ error: "INVALID_REQUESTER_CREDENTIAL" });
+        }
+        const query = pageQuerySchema.safeParse(request.query);
+        if (!query.success) return reply.code(400).send({ error: "INVALID_PAGE" });
+        const cursor = query.data.cursor ? decodeJobCursor(query.data.cursor) : undefined;
+        if (query.data.cursor && !cursor) {
+          return reply.code(400).send({ error: "INVALID_CURSOR" });
+        }
+        const page = await store.listRequesterJobs(
+          requester.id,
+          query.data.limit,
+          cursor ?? undefined,
+        );
+        return {
+          items: page.items,
+          nextCursor: page.nextCursor ? encodeJobCursor(page.nextCursor) : null,
+        };
       },
     );
 
@@ -241,6 +340,95 @@ export function buildApp(options: BuildAppOptions = {}) {
       },
     );
 
+    app.get(
+      "/v1/jobs/:id/events",
+      { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
+        const query = z
+          .object({ after: z.coerce.number().int().nonnegative().optional() })
+          .safeParse(request.query);
+        if (!params.success || !query.success) {
+          return reply.code(400).send({ error: "INVALID_EVENT_STREAM" });
+        }
+        const requester = await authenticateRequester(request.headers.authorization);
+        if (!requester) {
+          return reply.code(401).send({ error: "INVALID_REQUESTER_CREDENTIAL" });
+        }
+        const job = await store.findJob(params.data.id);
+        if (!job || job.requesterId !== requester.id) {
+          return reply.code(404).send({ error: "JOB_NOT_FOUND" });
+        }
+
+        const header = request.headers["last-event-id"];
+        const headerValue = Array.isArray(header) ? header[0] : header;
+        const parsedHeader = headerValue ? Number(headerValue) : Number.NaN;
+        let afterSequence =
+          Number.isSafeInteger(parsedHeader) && parsedHeader >= 0
+            ? parsedHeader
+            : (query.data.after ?? 0);
+        let closed = false;
+        reply.raw.on("close", () => {
+          closed = true;
+        });
+        reply.hijack();
+        reply.raw.writeHead(200, {
+          "content-type": "text/event-stream; charset=utf-8",
+          "cache-control": "no-cache, no-transform",
+          connection: "keep-alive",
+          "x-accel-buffering": "no",
+        });
+
+        while (!closed) {
+          const events = await store.listJobEvents(job.id, afterSequence);
+          for (const event of events) {
+            const view = eventView(event);
+            reply.raw.write(
+              `id: ${view.seq}\nevent: ${view.type}\ndata: ${JSON.stringify(view)}\n\n`,
+            );
+            afterSequence = view.seq;
+          }
+          const current = await store.findJob(job.id);
+          if (!current || isTerminalJobState(current.state)) {
+            reply.raw.end();
+            break;
+          }
+          await store.waitForJobEvents(
+            job.id,
+            afterSequence,
+            protocolTiming.sseHeartbeatSeconds * 1_000,
+          );
+          if ((await store.listJobEvents(job.id, afterSequence)).length === 0 && !closed) {
+            reply.raw.write(
+              `event: heartbeat\ndata: ${JSON.stringify({ at: now().toISOString() })}\n\n`,
+            );
+          }
+        }
+      },
+    );
+
+    app.post(
+      "/v1/jobs/:id/cancel",
+      { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
+        if (!params.success) return reply.code(400).send({ error: "INVALID_JOB_ID" });
+        const requester = await authenticateRequester(request.headers.authorization);
+        if (!requester) {
+          return reply.code(401).send({ error: "INVALID_REQUESTER_CREDENTIAL" });
+        }
+        const result = await store.cancelRequesterJob(params.data.id, requester.id, randomUUID());
+        if (!result.ok) {
+          return reply
+            .code(result.reason === "JOB_NOT_FOUND" ? 404 : 409)
+            .send({ error: result.reason });
+        }
+        return reply
+          .code(result.status === "CANCEL_REQUESTED" ? 202 : 200)
+          .send({ job: result.value, status: result.status });
+      },
+    );
+
     app.post(
       "/v1/nodes/register",
       { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } },
@@ -294,7 +482,11 @@ export function buildApp(options: BuildAppOptions = {}) {
         const node = await store.heartbeatProvider(params.data.id, body.data);
         if (!node) return reply.code(404).send({ error: "NODE_NOT_FOUND" });
         if (autoMatch && node.status === "ONLINE") await matcher.sweep().catch(() => 0);
-        return { node };
+        const [offers, commands] = await Promise.all([
+          store.listPendingOffers(params.data.id, now().toISOString()),
+          store.listAgentCommands(params.data.id),
+        ]);
+        return { node, offers, commands };
       },
     );
 

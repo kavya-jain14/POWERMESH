@@ -135,5 +135,22 @@ integration("PostgreSQL coordinator store", () => {
     );
     expect(replay).toEqual({ ok: false, reason: "NONCE_ALREADY_USED" });
     expect((await store.findJob(job.id))?.state).toBe("CLAIMED");
+
+    const page = await store.listRequesterJobs(requester.id, 10);
+    expect(page.items.map((item) => item.id)).toContain(job.id);
+    const events = await store.listJobEvents(job.id, 0);
+    expect(events.map((event) => event.toState)).toEqual([
+      "SUBMITTED",
+      "POLICY_CHECKED",
+      "OFFERED",
+      "APPROVED",
+      "CLAIMED",
+    ]);
+
+    const cancellation = await store.cancelRequesterJob(job.id, requester.id, randomUUID());
+    expect(cancellation).toMatchObject({ ok: true, status: "CANCEL_REQUESTED" });
+    expect(await store.listAgentCommands(node.id)).toEqual([
+      { type: "CANCEL", jobId: job.id, reason: "REQUESTER_CANCEL" },
+    ]);
   });
 });

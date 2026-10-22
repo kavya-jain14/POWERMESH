@@ -1,4 +1,5 @@
 import type {
+  AgentCommand,
   ExecutionCompletion,
   JobState,
   JobSubmission,
@@ -9,6 +10,29 @@ import type {
   RiskTier,
   SignedJobOffer,
 } from "@powermesh/contracts";
+
+export interface JobListCursor {
+  createdAt: string;
+  id: string;
+}
+
+export interface JobEventRecord {
+  sequence: number;
+  id: string;
+  jobId: string;
+  actor: string;
+  eventType: string;
+  fromState: JobState | null;
+  toState: JobState;
+  correlationId: string;
+  safePayload: Record<string, unknown>;
+  createdAt: string;
+  attempt: number;
+}
+
+export type CancelRequesterJobResult =
+  | { ok: true; value: JobRecord; status: "CANCELLED" | "CANCEL_REQUESTED" }
+  | { ok: false; reason: "JOB_NOT_FOUND" | "INVALID_STATE" };
 
 export interface JobRecord {
   id: string;
@@ -89,6 +113,19 @@ export interface CoordinatorStore {
   authenticateRequester(tokenHash: string): Promise<RequesterRecord | null>;
   createPolicyCheckedJob(input: JobSubmission, risk: RiskDecision): Promise<JobRecord>;
   findJob(id: string): Promise<JobRecord | null>;
+  listRequesterJobs(
+    requesterId: string,
+    limit: number,
+    cursor?: JobListCursor,
+  ): Promise<{ items: JobRecord[]; nextCursor: JobListCursor | null }>;
+  listJobEvents(jobId: string, afterSequence: number): Promise<JobEventRecord[]>;
+  waitForJobEvents(jobId: string, afterSequence: number, timeoutMs: number): Promise<void>;
+  cancelRequesterJob(
+    jobId: string,
+    requesterId: string,
+    correlationId: string,
+  ): Promise<CancelRequesterJobResult>;
+  listAgentCommands(nodeId: string): Promise<AgentCommand[]>;
   listPolicyCheckedJobs(limit: number): Promise<JobRecord[]>;
   transitionJob(
     id: string,

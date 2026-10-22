@@ -1,12 +1,17 @@
 import { randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import {
+  type AgentCommand,
   assertJobTransition,
   offerManifestSchema,
   type SignedJobOffer,
 } from "@powermesh/contracts";
 import type { Pool, PoolClient } from "pg";
 import {
+  type CancelRequesterJobResult,
   type CoordinatorStore,
+  type JobEventRecord,
+  type JobListCursor,
   type JobRecord,
   type ProviderNodeRecord,
   providerCanRunJob,
@@ -94,6 +99,20 @@ interface RequesterRow {
   status: "ACTIVE" | "SUSPENDED";
   created_at: Date;
   updated_at: Date;
+}
+
+interface JobEventRow {
+  sequence: string | number;
+  id: string;
+  job_id: string;
+  actor: string;
+  event_type: string;
+  from_state: JobRecord["state"] | null;
+  to_state: JobRecord["state"];
+  correlation_id: string;
+  safe_payload: Record<string, unknown>;
+  created_at: Date;
+  attempt: number;
 }
 
 const jobSelect = `
@@ -188,6 +207,22 @@ function mapRequester(row: RequesterRow): RequesterRecord {
   };
 }
 
+function mapJobEvent(row: JobEventRow): JobEventRecord {
+  return {
+    sequence: Number(row.sequence),
+    id: row.id,
+    jobId: row.job_id,
+    actor: row.actor,
+    eventType: row.event_type,
+    fromState: row.from_state,
+    toState: row.to_state,
+    correlationId: row.correlation_id,
+    safePayload: row.safe_payload,
+    createdAt: row.created_at.toISOString(),
+    attempt: row.attempt,
+  };
+}
+
 async function rollback(client: PoolClient): Promise<void> {
   try {
     await client.query("ROLLBACK");
@@ -227,11 +262,40 @@ async function recordTransition(
 
 export class PostgresCoordinatorStore implements CoordinatorStore {
   readonly kind = "postgres" as const;
+  private readonly eventEmitter = new EventEmitter();
+  private notificationClient: PoolClient | null = null;
+  private notificationReady: Promise<void> | null = null;
 
   constructor(private readonly pool: Pool) {}
 
   async close(): Promise<void> {
+    if (this.notificationClient) {
+      await this.notificationClient.query("UNLISTEN powermesh_job_events").catch(() => undefined);
+      this.notificationClient.release();
+      this.notificationClient = null;
+    }
+    this.eventEmitter.removeAllListeners();
     await this.pool.end();
+  }
+
+  private async ensureEventListener(): Promise<void> {
+    if (!this.notificationReady) {
+      this.notificationReady = (async () => {
+        const client = await this.pool.connect();
+        client.on("notification", (message) => {
+          if (message.channel === "powermesh_job_events" && message.payload) {
+            this.eventEmitter.emit(message.payload);
+          }
+        });
+        client.on("error", () => {
+          this.notificationClient = null;
+          this.notificationReady = null;
+        });
+        await client.query("LISTEN powermesh_job_events");
+        this.notificationClient = client;
+      })();
+    }
+    await this.notificationReady;
   }
 
   async registerRequester(
@@ -341,6 +405,167 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
   async findJob(id: string): Promise<JobRecord | null> {
     const result = await this.pool.query<JobRow>(`${jobSelect} WHERE jobs.id = $1`, [id]);
     return result.rows[0] ? mapJob(result.rows[0]) : null;
+  }
+
+  async listRequesterJobs(
+    requesterId: string,
+    limit: number,
+    cursor?: JobListCursor,
+  ): Promise<{ items: JobRecord[]; nextCursor: JobListCursor | null }> {
+    const result = await this.pool.query<JobRow>(
+      `${jobSelect}
+       WHERE jobs.requester_id = $1
+         AND ($2::timestamptz IS NULL OR (jobs.created_at, jobs.id) < ($2::timestamptz, $3::uuid))
+       ORDER BY jobs.created_at DESC, jobs.id DESC
+       LIMIT $4`,
+      [requesterId, cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1],
+    );
+    const items = result.rows.slice(0, limit).map(mapJob);
+    const last = result.rows.length > limit ? items.at(-1) : undefined;
+    return {
+      items,
+      nextCursor: last ? { createdAt: last.createdAt, id: last.id } : null,
+    };
+  }
+
+  async listJobEvents(jobId: string, afterSequence: number): Promise<JobEventRecord[]> {
+    const result = await this.pool.query<JobEventRow>(
+      `SELECT sequence, id, job_id, actor, event_type, from_state, to_state,
+              correlation_id, safe_payload, created_at, attempt
+       FROM job_events
+       WHERE job_id = $1 AND sequence > $2
+       ORDER BY sequence`,
+      [jobId, afterSequence],
+    );
+    return result.rows.map(mapJobEvent);
+  }
+
+  async waitForJobEvents(jobId: string, afterSequence: number, timeoutMs: number): Promise<void> {
+    await this.ensureEventListener();
+    if ((await this.listJobEvents(jobId, afterSequence)).length > 0) return;
+    await new Promise<void>((resolve) => {
+      const onEvent = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        this.eventEmitter.off(jobId, onEvent);
+        resolve();
+      }, timeoutMs);
+      this.eventEmitter.once(jobId, onEvent);
+    });
+  }
+
+  async cancelRequesterJob(
+    jobId: string,
+    requesterId: string,
+    correlationId: string,
+  ): Promise<CancelRequesterJobResult> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<{ state: JobRecord["state"] }>(
+        "SELECT state FROM jobs WHERE id = $1 AND requester_id = $2 FOR UPDATE",
+        [jobId, requesterId],
+      );
+      const currentState = result.rows[0]?.state;
+      if (!currentState) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "JOB_NOT_FOUND" };
+      }
+
+      const directStates = new Set<JobRecord["state"]>([
+        "SUBMITTED",
+        "POLICY_CHECKED",
+        "QUEUED",
+        "OFFERED",
+        "APPROVED",
+      ]);
+      const commandStates = new Set<JobRecord["state"]>([
+        "CLAIMED",
+        "STAGING",
+        "RUNNING",
+        "VALIDATING",
+      ]);
+
+      if (directStates.has(currentState)) {
+        assertJobTransition(currentState, "CANCELLED");
+        await client.query(
+          "UPDATE jobs SET state = 'CANCELLED', updated_at = NOW() WHERE id = $1",
+          [jobId],
+        );
+        await client.query(
+          `INSERT INTO job_events
+            (id, job_id, actor, event_type, from_state, to_state, correlation_id, safe_payload)
+           VALUES ($1, $2, 'REQUESTER', 'JOB_CANCELLED', $3, 'CANCELLED', $4, $5)`,
+          [
+            randomUUID(),
+            jobId,
+            currentState,
+            correlationId,
+            JSON.stringify({ reasonCode: "REQUESTER_CANCEL" }),
+          ],
+        );
+        await client.query("COMMIT");
+        const job = await this.findJob(jobId);
+        if (!job) throw new Error("Cancelled job could not be read");
+        return { ok: true, value: job, status: "CANCELLED" };
+      }
+
+      if (!commandStates.has(currentState)) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "INVALID_STATE" };
+      }
+      const assignment = await client.query<{ node_id: string }>(
+        "SELECT node_id FROM assignments WHERE job_id = $1 FOR UPDATE",
+        [jobId],
+      );
+      const nodeId = assignment.rows[0]?.node_id;
+      if (!nodeId) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "INVALID_STATE" };
+      }
+      const command = await client.query(
+        `INSERT INTO agent_commands (id, node_id, job_id, command_type, reason)
+         VALUES ($1, $2, $3, 'CANCEL', 'REQUESTER_CANCEL')
+         ON CONFLICT (node_id, job_id, command_type) DO NOTHING`,
+        [randomUUID(), nodeId, jobId],
+      );
+      if (command.rowCount === 1) {
+        await client.query(
+          `INSERT INTO job_events
+            (id, job_id, actor, event_type, from_state, to_state, correlation_id, safe_payload)
+           VALUES ($1, $2, 'REQUESTER', 'CANCEL_REQUESTED', $3, $3, $4, $5)`,
+          [
+            randomUUID(),
+            jobId,
+            currentState,
+            correlationId,
+            JSON.stringify({ reasonCode: "REQUESTER_CANCEL" }),
+          ],
+        );
+      }
+      await client.query("COMMIT");
+      const job = await this.findJob(jobId);
+      if (!job) throw new Error("Cancellation-requested job could not be read");
+      return { ok: true, value: job, status: "CANCEL_REQUESTED" };
+    } catch (error) {
+      await rollback(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async listAgentCommands(nodeId: string): Promise<AgentCommand[]> {
+    const result = await this.pool.query<{ job_id: string; reason: AgentCommand["reason"] }>(
+      `SELECT job_id, reason
+       FROM agent_commands
+       WHERE node_id = $1
+       ORDER BY created_at`,
+      [nodeId],
+    );
+    return result.rows.map((row) => ({ type: "CANCEL", jobId: row.job_id, reason: row.reason }));
   }
 
   async listPolicyCheckedJobs(limit: number): Promise<JobRecord[]> {
