@@ -30,9 +30,12 @@ with a provider-row lock so concurrent submissions cannot oversubscribe a node.
 
 ## Job lifecycle
 
-`SUBMITTED → POLICY_CHECKED → OFFERED → APPROVED → CLAIMED → RUNNING → VALIDATING → SUCCEEDED`
+`SUBMITTED → POLICY_CHECKED → QUEUED → OFFERED → APPROVED → CLAIMED → STAGING → RUNNING → VALIDATING → SUCCEEDED`
 
-Terminal failure states are `FAILED`, `CANCELLED`, and `EXPIRED`. Every transition must be validated server-side and written as an append-only event.
+Terminal states are `REJECTED`, `DECLINED`, `EXPIRED`, `SUCCEEDED`, `FAILED`, `CANCELLED`, and
+`TIMED_OUT`. A lease-expired idempotent job may move from `CLAIMED`, `STAGING`, or `RUNNING` back to
+`QUEUED` only while another attempt remains. Every transition must be validated server-side and written as an
+append-only event. `DRAFT` is client-only and is not a server job state.
 
 ## Persistence boundary
 

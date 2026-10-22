@@ -73,6 +73,8 @@ export const protocolTiming = {
   executionLeaseSeconds: 30,
   leaseExpiryGraceSeconds: 10,
   offerTtlSeconds: 60,
+  queueTimeoutSeconds: 300,
+  maxJobAttempts: 2,
   artifactUrlTtlSeconds: 600,
 } as const;
 

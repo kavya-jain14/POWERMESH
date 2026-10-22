@@ -4,16 +4,21 @@ export const riskTiers = ["LOW", "MEDIUM", "HIGH", "BLOCKED"] as const;
 export const networkModes = ["OFFLINE", "RESTRICTED", "OPEN_WEB"] as const;
 export const jobStates = [
   "SUBMITTED",
+  "REJECTED",
   "POLICY_CHECKED",
+  "QUEUED",
   "OFFERED",
+  "DECLINED",
   "APPROVED",
   "CLAIMED",
+  "STAGING",
   "RUNNING",
   "VALIDATING",
   "SUCCEEDED",
   "FAILED",
   "CANCELLED",
   "EXPIRED",
+  "TIMED_OUT",
 ] as const;
 
 export const riskTierSchema = z.enum(riskTiers);
