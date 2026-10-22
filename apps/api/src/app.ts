@@ -559,6 +559,30 @@ export function buildApp(options: BuildAppOptions = {}) {
     );
 
     app.post(
+      "/v1/nodes/:nodeId/offers/:offerId/decline",
+      { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const params = z
+          .object({ nodeId: z.string().uuid(), offerId: z.string().uuid() })
+          .safeParse(request.params);
+        if (!params.success) return reply.code(400).send({ error: "INVALID_OFFER_ID" });
+        if (!(await authenticateNode(params.data.nodeId, request.headers.authorization))) {
+          return reply.code(401).send({ error: "INVALID_AGENT_CREDENTIAL" });
+        }
+
+        const result = await store.declineOffer(
+          params.data.offerId,
+          params.data.nodeId,
+          now().toISOString(),
+        );
+        if (!result.ok) {
+          return reply.code(failureStatus(result.reason)).send({ error: result.reason });
+        }
+        return { offer: result.value };
+      },
+    );
+
+    app.post(
       "/v1/nodes/:nodeId/jobs/:jobId/start",
       { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
       async (request, reply) => {

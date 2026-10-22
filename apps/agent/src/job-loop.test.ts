@@ -85,8 +85,9 @@ describe("Agent job loop", () => {
           status: 200,
           headers: { "content-type": "application/json" },
         });
-      if (path.endsWith("/heartbeat")) return json({ node: { id: nodeId } });
-      if (path.endsWith("/offers")) return json({ offers: [offer] });
+      if (path.endsWith("/heartbeat")) {
+        return json({ node: { id: nodeId, status: "ONLINE" }, offers: [offer], commands: [] });
+      }
       if (path.endsWith("/approve")) {
         return json({ offer: { ...offer, approvedAt: "2026-10-10T08:00:10.000Z" } });
       }
@@ -165,8 +166,9 @@ describe("Agent job loop", () => {
           status: 200,
           headers: { "content-type": "application/json" },
         });
-      if (path.endsWith("/heartbeat")) return json({ node: { id: nodeId } });
-      if (path.endsWith("/offers")) return json({ offers: [offer] });
+      if (path.endsWith("/heartbeat")) {
+        return json({ node: { id: nodeId, status: "ONLINE" }, offers: [offer], commands: [] });
+      }
       if (path.endsWith("/approve")) {
         return json({ offer: { ...offer, approvedAt: "2026-10-10T08:00:10.000Z" } });
       }
@@ -247,5 +249,90 @@ describe("Agent job loop", () => {
     );
     const completion = requests.find(({ path }) => path.endsWith("/complete"));
     expect(completion?.body).toMatchObject({ outputValidated: true, resultSummary });
+  });
+
+  it("reports a human decline through the authenticated Agent route", async () => {
+    const { offer, publicKey } = signedOffer();
+    const requests: string[] = [];
+    const fetcher = vi.fn(async (input: string) => {
+      const path = new URL(input).pathname;
+      requests.push(path);
+      const body = path.endsWith("/heartbeat")
+        ? { node: { id: nodeId, status: "ONLINE" }, offers: [offer], commands: [] }
+        : { offer };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const executor = { execute: vi.fn(), kill: vi.fn().mockReturnValue(true) };
+    const loop = new AgentJobLoop({
+      origin: "https://coordinator.example",
+      nodeId,
+      agentToken: "agent-token",
+      coordinatorPublicKey: publicKey,
+      runtime: {
+        dockerAvailable: true,
+        rootless: true,
+        canExecute: true,
+        executionMode: "ROOTLESS_LINUX",
+        accelerators: [],
+        isolationLevels: ["CONTAINER_BASELINE"],
+        reasons: [],
+      },
+      executor,
+      heartbeat: () => ({
+        availableCpu: 4,
+        availableMemoryMb: 4096,
+        activeJobs: 0,
+        status: "ONLINE",
+      }),
+      approveOffer: async () => false,
+      fetcher,
+    });
+
+    await expect(loop.runOnce()).resolves.toEqual([{ offerId, status: "DECLINED" }]);
+    expect(requests).toContain(`/v1/nodes/${nodeId}/offers/${offerId}/decline`);
+    expect(executor.execute).not.toHaveBeenCalled();
+  });
+
+  it("acts on cancellation commands returned by heartbeat", async () => {
+    const { publicKey } = signedOffer();
+    const executor = { execute: vi.fn(), kill: vi.fn().mockReturnValue(true) };
+    const loop = new AgentJobLoop({
+      origin: "https://coordinator.example",
+      nodeId,
+      agentToken: "agent-token",
+      coordinatorPublicKey: publicKey,
+      runtime: {
+        dockerAvailable: true,
+        rootless: true,
+        canExecute: true,
+        executionMode: "ROOTLESS_LINUX",
+        accelerators: [],
+        isolationLevels: ["CONTAINER_BASELINE"],
+        reasons: [],
+      },
+      executor,
+      heartbeat: () => ({
+        availableCpu: 4,
+        availableMemoryMb: 4096,
+        activeJobs: 1,
+        status: "BUSY",
+      }),
+      approveOffer: async () => true,
+      fetcher: async () =>
+        new Response(
+          JSON.stringify({
+            node: { id: nodeId, status: "BUSY" },
+            offers: [],
+            commands: [{ type: "CANCEL", jobId, reason: "REQUESTER_CANCEL" }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    });
+
+    await expect(loop.runOnce()).resolves.toEqual([]);
+    expect(executor.kill).toHaveBeenCalledWith(jobId);
   });
 });

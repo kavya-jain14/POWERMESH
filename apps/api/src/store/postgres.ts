@@ -974,6 +974,70 @@ export class PostgresCoordinatorStore implements CoordinatorStore {
     }
   }
 
+  async declineOffer(
+    offerId: string,
+    nodeId: string,
+    now: string,
+  ): Promise<StoreResult<SignedJobOffer>> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<LockedOfferRow>(
+        `SELECT assignments.*, jobs.state AS job_state
+         FROM assignments
+         JOIN jobs ON jobs.id = assignments.job_id
+         WHERE assignments.id = $1
+         FOR UPDATE OF assignments, jobs`,
+        [offerId],
+      );
+      const row = result.rows[0];
+      if (!row) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "OFFER_NOT_FOUND" };
+      }
+      if (row.node_id !== nodeId) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "NODE_MISMATCH" };
+      }
+      if (row.expires_at.getTime() <= Date.parse(now)) {
+        if (row.job_state === "OFFERED") {
+          await recordTransition(
+            client,
+            row.job_id,
+            row.job_state,
+            "EXPIRED",
+            "COORDINATOR",
+            "OFFER_EXPIRED",
+            { offerId, reasonCode: "OFFER_EXPIRED" },
+          );
+        }
+        await client.query("COMMIT");
+        return { ok: false, reason: "OFFER_EXPIRED" };
+      }
+      if (row.job_state !== "OFFERED") {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "INVALID_STATE" };
+      }
+
+      await recordTransition(
+        client,
+        row.job_id,
+        row.job_state,
+        "DECLINED",
+        "PROVIDER",
+        "OFFER_DECLINED",
+        { offerId, reasonCode: "PROVIDER_DECLINED" },
+      );
+      await client.query("COMMIT");
+      return { ok: true, value: mapOffer(row) };
+    } catch (error) {
+      await rollback(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async claimOffer(
     offerId: string,
     nodeId: string,

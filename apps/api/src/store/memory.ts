@@ -460,6 +460,50 @@ export class MemoryCoordinatorStore implements CoordinatorStore {
     return { ok: true, value: structuredClone(record) };
   }
 
+  async declineOffer(
+    offerId: string,
+    nodeId: string,
+    now: string,
+  ): Promise<StoreResult<SignedJobOffer>> {
+    const stored = this.offers.get(offerId);
+    if (!stored) return { ok: false, reason: "OFFER_NOT_FOUND" };
+    if (stored.record.manifest.nodeId !== nodeId) return { ok: false, reason: "NODE_MISMATCH" };
+    const job = this.jobs.get(stored.record.manifest.jobId);
+    if (!job) return { ok: false, reason: "JOB_NOT_FOUND" };
+    if (Date.parse(stored.record.manifest.expiresAt) <= Date.parse(now)) {
+      if (job.state === "OFFERED") {
+        assertJobTransition(job.state, "EXPIRED");
+        this.jobs.set(job.id, { ...job, state: "EXPIRED", updatedAt: now });
+        this.appendEvent(
+          job.id,
+          "COORDINATOR",
+          "OFFER_EXPIRED",
+          job.state,
+          "EXPIRED",
+          randomUUID(),
+          { offerId },
+          now,
+        );
+      }
+      return { ok: false, reason: "OFFER_EXPIRED" };
+    }
+    if (job.state !== "OFFERED") return { ok: false, reason: "INVALID_STATE" };
+
+    assertJobTransition(job.state, "DECLINED");
+    this.jobs.set(job.id, { ...job, state: "DECLINED", updatedAt: now });
+    this.appendEvent(
+      job.id,
+      "PROVIDER",
+      "OFFER_DECLINED",
+      job.state,
+      "DECLINED",
+      randomUUID(),
+      { offerId, reasonCode: "PROVIDER_DECLINED" },
+      now,
+    );
+    return { ok: true, value: structuredClone(stored.record) };
+  }
+
   async claimOffer(
     offerId: string,
     nodeId: string,

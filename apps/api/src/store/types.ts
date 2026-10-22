@@ -146,6 +146,7 @@ export interface CoordinatorStore {
   createOffer(offer: SignedJobOffer): Promise<StoreResult<SignedJobOffer>>;
   listPendingOffers(nodeId: string, now: string): Promise<SignedJobOffer[]>;
   approveOffer(offerId: string, nodeId: string, now: string): Promise<StoreResult<SignedJobOffer>>;
+  declineOffer(offerId: string, nodeId: string, now: string): Promise<StoreResult<SignedJobOffer>>;
   claimOffer(
     offerId: string,
     nodeId: string,

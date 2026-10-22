@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  agentHeartbeatResponseSchema,
   type GpuBenchmarkResult,
   gpuBenchmarkResultSchema,
   type ProviderHeartbeat,
@@ -18,7 +19,6 @@ import type { SandboxResult } from "./sandbox/types";
 
 type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
 
-const offerListSchema = z.object({ offers: z.array(signedJobOfferSchema) });
 const offerResponseSchema = z.object({ offer: signedJobOfferSchema });
 
 export type JobLoopOutcome =
@@ -137,18 +137,16 @@ export class AgentJobLoop {
     return response.json();
   }
 
-  private async heartbeat(): Promise<void> {
+  private async heartbeat() {
     const response = await this.postJson(
       `/v1/nodes/${this.options.nodeId}/heartbeat`,
       this.options.heartbeat(),
     );
-    z.object({ node: z.object({ id: z.string().uuid() }).passthrough() }).parse(response);
-  }
-
-  private async pollOffers(): Promise<SignedJobOffer[]> {
-    const response = await this.request(`/v1/nodes/${this.options.nodeId}/offers`);
-    if (!response.ok) throw new Error(`OFFER_POLL_FAILED_${response.status}`);
-    return offerListSchema.parse(await response.json()).offers;
+    const heartbeat = agentHeartbeatResponseSchema.parse(response);
+    for (const command of heartbeat.commands) {
+      if (command.type === "CANCEL") this.stop(command.jobId);
+    }
+    return heartbeat;
   }
 
   private async handleOffer(untrustedOffer: SignedJobOffer): Promise<JobLoopOutcome> {
@@ -167,6 +165,7 @@ export class AgentJobLoop {
 
     if (!offer.approvedAt) {
       if (!(await this.options.approveOffer(offer))) {
+        await this.postJson(`/v1/nodes/${this.options.nodeId}/offers/${offer.id}/decline`);
         return { offerId: offer.id, status: "DECLINED" };
       }
       offer = offerResponseSchema.parse(
@@ -223,9 +222,9 @@ export class AgentJobLoop {
   }
 
   async runOnce(): Promise<JobLoopOutcome[]> {
-    await this.heartbeat();
+    const heartbeat = await this.heartbeat();
     const outcomes: JobLoopOutcome[] = [];
-    for (const offer of await this.pollOffers()) {
+    for (const offer of heartbeat.offers) {
       try {
         outcomes.push(await this.handleOffer(offer));
       } catch {

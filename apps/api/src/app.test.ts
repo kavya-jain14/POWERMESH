@@ -300,6 +300,90 @@ describe("coordinator API", () => {
     await app.close();
   });
 
+  it("lets an authenticated provider decline an offered job", async () => {
+    const app = buildTestApp({
+      coordinatorKey: "coordinator-test-key",
+      enrollmentKey,
+      autoMatch: false,
+    });
+    const { requesterToken } = await enrollRequester(app);
+    const registration = await app.inject({
+      method: "POST",
+      url: "/v1/nodes/register",
+      headers: { "x-powermesh-enrollment-key": enrollmentKey },
+      payload: {
+        ownerId: "22222222-2222-4222-8222-222222222222",
+        nodeName: "declining-provider",
+        os: "linux",
+        architecture: "x64",
+        agentVersion: "0.1.0",
+        cpuCores: 8,
+        memoryMb: 8192,
+        networkModes: ["OFFLINE", "RESTRICTED"],
+        isolationLevels: ["GVISOR"],
+      },
+    });
+    const { node, agentToken } = registration.json();
+    await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/heartbeat`,
+      headers: { authorization: `Bearer ${agentToken}` },
+      payload: {
+        availableCpu: 6,
+        availableMemoryMb: 6144,
+        activeJobs: 0,
+        status: "ONLINE",
+      },
+    });
+
+    const submission = await app.inject({
+      method: "POST",
+      url: "/v1/jobs",
+      headers: { authorization: `Bearer ${requesterToken}` },
+      payload: {
+        workloadId: imageTransformWorkloadId,
+        params: { format: "webp", maxWidth: 1600, quality: 82 },
+      },
+    });
+    const jobId = submission.json().job.id;
+    const creation = await app.inject({
+      method: "POST",
+      url: `/v1/jobs/${jobId}/offers`,
+      headers: { "x-powermesh-coordinator-key": "coordinator-test-key" },
+      payload: { nodeId: node.id, ttlSeconds: 120 },
+    });
+    const offerId = creation.json().offer.id;
+
+    const unauthenticated = await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/offers/${offerId}/decline`,
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+
+    const decline = await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/offers/${offerId}/decline`,
+      headers: { authorization: `Bearer ${agentToken}` },
+    });
+    expect(decline.statusCode).toBe(200);
+
+    const replay = await app.inject({
+      method: "POST",
+      url: `/v1/nodes/${node.id}/offers/${offerId}/decline`,
+      headers: { authorization: `Bearer ${agentToken}` },
+    });
+    expect(replay.statusCode).toBe(409);
+    expect(replay.json().error).toBe("INVALID_STATE");
+
+    const job = await app.inject({
+      method: "GET",
+      url: `/v1/jobs/${jobId}`,
+      headers: { authorization: `Bearer ${requesterToken}` },
+    });
+    expect(job.json().state).toBe("DECLINED");
+    await app.close();
+  });
+
   it("automatically matches a queued job and accepts authenticated execution results", async () => {
     const app = buildTestApp({ enrollmentKey });
     const { requesterToken } = await enrollRequester(app);
