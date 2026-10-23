@@ -35,6 +35,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows-gpu-check.ps1
 The final line must be `READY`. If `nvidia-smi` fails inside the container, update the Windows NVIDIA
 driver, run `wsl --update`, and confirm Docker Desktop is using the WSL2 backend.
 
+The laptops do not connect directly and neither laptop needs router port forwarding. Both use the
+same HTTPS coordinator URL: the requester uses it through the web bridge and the provider Agent polls
+it outbound. A raw `http://192.168.x.x` coordinator is intentionally rejected because it would expose
+the enrollment secret, Agent token, and signed offers on the LAN.
+
 ## 3. Enrol Fuzail's provider
 
 Open Ubuntu in WSL2. Clone/pull the repository inside the Linux filesystem, then:
@@ -50,8 +55,14 @@ export AGENT_NODE_NAME="fuzail-windows-nvidia"
 export POWERMESH_ALLOW_DESKTOP_SANDBOX="true"
 export POWERMESH_CREDENTIAL_STORE="windows-dpapi"
 
+pnpm --filter @powermesh/agent doctor -- --require-gpu
+
 pnpm --filter @powermesh/agent enroll
 ```
+
+Do not enrol until the doctor ends with `READY`. It checks the shared coordinator's HTTPS health and
+Ed25519 identity, the WSL2 Docker execution profile, host GPU detection, and a real CUDA container.
+The first run may take longer while Docker pulls the probe image.
 
 Verify the displayed Ed25519 fingerprint against the coordinator's trusted fingerprint. Save the
 returned node ID, then start the Agent:

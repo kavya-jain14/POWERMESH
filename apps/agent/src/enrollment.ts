@@ -25,12 +25,14 @@ interface EnrollmentOptions {
   fetcher?: Fetcher;
 }
 
-function endpointOrigin(endpoint: string): string {
-  const origin = new URL(endpoint).origin;
-  if (!origin.startsWith("https://") && !origin.startsWith("http://localhost")) {
+export function coordinatorOrigin(endpoint: string): string {
+  const url = new URL(endpoint);
+  const loopbackHttp =
+    url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (url.protocol !== "https:" && !loopbackHttp) {
     throw new Error("COORDINATOR_TLS_REQUIRED");
   }
-  return origin;
+  return url.origin;
 }
 
 async function fetchSigningKey(origin: string, fetcher: Fetcher) {
@@ -41,7 +43,7 @@ async function fetchSigningKey(origin: string, fetcher: Fetcher) {
 
 export async function enrollAgent(options: EnrollmentOptions) {
   const registration = providerRegistrationSchema.parse(options.registration);
-  const origin = endpointOrigin(options.endpoint);
+  const origin = coordinatorOrigin(options.endpoint);
   const fetcher = options.fetcher ?? fetch;
   const signingKey = await fetchSigningKey(origin, fetcher);
   const fingerprint = publicKeyFingerprint(signingKey.publicKey);
@@ -63,7 +65,7 @@ export async function enrollAgent(options: EnrollmentOptions) {
 }
 
 export async function loadAgentTrust(endpoint: string, trust: AgentTrustStore) {
-  const origin = endpointOrigin(endpoint);
+  const origin = coordinatorOrigin(endpoint);
   const [agentToken, publicKey] = await Promise.all([
     trust.getAgentToken(origin),
     trust.getPinnedCoordinatorKey(origin),

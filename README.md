@@ -120,6 +120,15 @@ Build the CUDA workload locally with:
 pnpm workload:gpu:build
 ```
 
+Before enrolling a Windows/WSL2 provider, verify the complete coordinator + Docker + GPU path:
+
+```bash
+pnpm --filter @powermesh/agent doctor -- --require-gpu
+```
+
+The two laptops never connect directly. They both make outbound HTTPS requests to the same
+coordinator, so no public provider port or router forwarding is required.
+
 ## Web app (Gargi)
 
 `apps/web` covers the six surfaces in master plan §6: Job Composer, Flight Recorder, Provider Console,

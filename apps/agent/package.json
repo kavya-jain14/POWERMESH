@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "dev": "node --env-file-if-exists=../../.env --watch --import tsx src/index.ts",
+    "doctor": "node --env-file-if-exists=../../.env --import tsx src/doctor-cli.ts",
     "enroll": "node --env-file-if-exists=../../.env --import tsx src/enroll-cli.ts",
     "start": "node --env-file-if-exists=../../.env --import tsx src/index.ts",
     "test": "vitest run",
