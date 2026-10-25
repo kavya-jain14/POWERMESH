@@ -165,6 +165,10 @@ export class AgentJobLoop {
     return verification.offer;
   }
 
+  private ensureNotStopped(): void {
+    if (this.stopped) throw new Error("AGENT_STOPPED");
+  }
+
   private async handleOffer(untrustedOffer: SignedJobOffer): Promise<JobLoopOutcome> {
     const verification = verifyCoordinatorOffer(untrustedOffer, this.options.coordinatorPublicKey);
     if (!verification.valid) {
@@ -180,13 +184,16 @@ export class AgentJobLoop {
     }
 
     if (!offer.approvedAt) {
-      if (!(await this.options.approveOffer(offer))) {
+      const approved = await this.options.approveOffer(offer);
+      this.ensureNotStopped();
+      if (!approved) {
         return { offerId: offer.id, status: "DECLINED" };
       }
       offer = this.verifyTransitionOffer(
         await this.postJson(`/v1/nodes/${this.options.nodeId}/offers/${offer.id}/approve`),
         offer,
       );
+      this.ensureNotStopped();
     }
 
     offer = this.verifyTransitionOffer(
@@ -196,8 +203,10 @@ export class AgentJobLoop {
       }),
       offer,
     );
+    this.ensureNotStopped();
 
     await this.postJson(`/v1/nodes/${this.options.nodeId}/jobs/${offer.manifest.jobId}/start`);
+    this.ensureNotStopped();
     const controller = new AbortController();
     this.running.set(offer.manifest.jobId, controller);
     await this.heartbeat().catch(() => undefined);
@@ -239,9 +248,12 @@ export class AgentJobLoop {
   }
 
   async runOnce(): Promise<JobLoopOutcome[]> {
+    if (this.stopped) return [];
     await this.heartbeat();
     const outcomes: JobLoopOutcome[] = [];
+    if (this.stopped) return outcomes;
     for (const offer of await this.pollOffers()) {
+      if (this.stopped) break;
       try {
         outcomes.push(await this.handleOffer(offer));
       } catch {

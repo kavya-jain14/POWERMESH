@@ -74,6 +74,114 @@ function signedOffer(
 }
 
 describe("Agent job loop", () => {
+  it.each(["heartbeat", "offers", "prompt", "approve", "claim", "start"])(
+    "does not start execution or process another offer after Stop during %s",
+    async (stage) => {
+      const { offer, publicKey } = signedOffer();
+      let release!: () => void;
+      let reached!: () => void;
+      const paused = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const entered = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
+      const pause = async () => {
+        reached();
+        await paused;
+      };
+      const fetcher = vi.fn(async (input: string) => {
+        const path = new URL(input).pathname;
+        if (path.endsWith(`/${stage}`)) await pause();
+        if (path.endsWith("/heartbeat")) return Response.json({ node: { id: nodeId } });
+        if (path.endsWith("/offers")) return Response.json({ offers: [offer, offer] });
+        if (path.endsWith("/approve") || path.endsWith("/claim")) return Response.json({ offer });
+        return Response.json({ job: { id: jobId } });
+      });
+      const executor = {
+        execute: vi.fn().mockResolvedValue({
+          exitCode: 0,
+          stdout: Buffer.from("RIFF\u0000\u0000\u0000\u0000WEBP"),
+          stderr: Buffer.alloc(0),
+          timedOut: false,
+          outputTruncated: false,
+        }),
+        kill: vi.fn(),
+      };
+      const approveOffer = vi.fn(async () => {
+        if (stage === "prompt") await pause();
+        return true;
+      });
+      const loop = new AgentJobLoop({
+        origin: "https://coordinator.example",
+        nodeId,
+        agentToken: "agent-token",
+        coordinatorPublicKey: publicKey,
+        runtime: {
+          dockerAvailable: true,
+          rootless: true,
+          canExecute: true,
+          executionMode: "ROOTLESS_LINUX",
+          accelerators: [],
+          isolationLevels: ["CONTAINER_BASELINE"],
+          reasons: [],
+        },
+        executor,
+        approveOffer,
+        fetcher,
+        heartbeat: () => ({
+          availableCpu: 4,
+          availableMemoryMb: 4096,
+          activeJobs: 0,
+          status: "ONLINE",
+        }),
+      });
+      const execution = loop.runOnce();
+      await entered;
+      loop.stop();
+      const requestCountAtStop = fetcher.mock.calls.length;
+      release();
+      await execution;
+
+      expect(executor.execute).not.toHaveBeenCalled();
+      expect(fetcher).toHaveBeenCalledTimes(requestCountAtStop);
+      expect(approveOffer.mock.calls.length).toBeLessThanOrEqual(1);
+      expect(loop.activeJobCount()).toBe(0);
+    },
+  );
+
+  it("does not contact the coordinator when a stopped loop is run again", async () => {
+    const { publicKey } = signedOffer();
+    const fetcher = vi.fn();
+    const loop = new AgentJobLoop({
+      origin: "https://coordinator.example",
+      nodeId,
+      agentToken: "agent-token",
+      coordinatorPublicKey: publicKey,
+      runtime: {
+        dockerAvailable: true,
+        rootless: true,
+        canExecute: true,
+        executionMode: "ROOTLESS_LINUX",
+        accelerators: [],
+        isolationLevels: ["CONTAINER_BASELINE"],
+        reasons: [],
+      },
+      executor: { execute: vi.fn(), kill: vi.fn() },
+      fetcher,
+      approveOffer: async () => true,
+      heartbeat: () => ({
+        availableCpu: 4,
+        availableMemoryMb: 4096,
+        activeJobs: 0,
+        status: "ONLINE",
+      }),
+    });
+    loop.stop();
+    await expect(loop.runOnce()).resolves.toEqual([]);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["approve", false],
     ["claim", false],
