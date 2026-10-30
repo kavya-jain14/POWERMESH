@@ -92,6 +92,7 @@ export class SandboxExecutor {
   ) {}
 
   async execute(job: SandboxJob, signal?: AbortSignal): Promise<SandboxResult> {
+    signal?.throwIfAborted();
     const name = `powermesh-${job.jobId.replace(/[^a-zA-Z0-9_.-]/g, "-").slice(0, 72)}-${randomUUID().slice(0, 8)}`;
     const child = this.spawnProcess("docker", buildDockerArgs(job, name));
     child.stdin.end();

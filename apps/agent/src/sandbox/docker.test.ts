@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { buildDockerArgs } from "./docker";
+import { describe, expect, it, vi } from "vitest";
+import { buildDockerArgs, SandboxExecutor } from "./docker";
 import type { SandboxJob } from "./types";
 
 const digest = "a".repeat(64);
@@ -20,6 +20,19 @@ const baseJob: SandboxJob = {
 };
 
 describe("Docker sandbox command", () => {
+  it("never spawns Docker for an already cancelled job", async () => {
+    const spawn = vi.fn();
+    const executor = new SandboxExecutor(spawn);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(executor.execute(baseJob, controller.signal)).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(spawn).not.toHaveBeenCalled();
+    expect(executor.kill(baseJob.jobId)).toBe(false);
+  });
+
   it("enforces gVisor, identity, offline networking, and hard limits", () => {
     const args = buildDockerArgs(baseJob, "powermesh-job-123");
     expect(args).toContain("--runtime=runsc");

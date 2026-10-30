@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  canonicalizeOfferManifest,
   type GpuBenchmarkResult,
   gpuBenchmarkResultSchema,
   type ProviderHeartbeat,
@@ -20,6 +21,7 @@ type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
 
 const offerListSchema = z.object({ offers: z.array(signedJobOfferSchema) });
 const offerResponseSchema = z.object({ offer: signedJobOfferSchema });
+const COORDINATOR_REQUEST_TIMEOUT_MS = 15_000;
 
 export type JobLoopOutcome =
   | { offerId: string; status: "DECLINED" }
@@ -121,20 +123,45 @@ export class AgentJobLoop {
     return this.running.size;
   }
 
-  private async request(path: string, init: RequestInit = {}): Promise<Response> {
+  private async requestJson(
+    path: string,
+    init: RequestInit = {},
+    failureCode = "COORDINATOR_REQUEST_FAILED",
+  ): Promise<unknown> {
     const headers = new Headers(init.headers);
     headers.set("authorization", `Bearer ${this.options.agentToken}`);
     if (init.body) headers.set("content-type", "application/json");
-    return this.fetcher(`${this.options.origin}${path}`, { ...init, headers });
+    const controller = new AbortController();
+    let timer!: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error("COORDINATOR_REQUEST_TIMEOUT"));
+        controller.abort();
+      }, COORDINATOR_REQUEST_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([
+        (async () => {
+          const response = await this.fetcher(`${this.options.origin}${path}`, {
+            ...init,
+            headers,
+            signal: controller.signal,
+          });
+          if (!response.ok) throw new Error(`${failureCode}_${response.status}`);
+          return await response.json();
+        })(),
+        timeout,
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private async postJson(path: string, body?: unknown): Promise<unknown> {
-    const response = await this.request(path, {
+    return this.requestJson(path, {
       method: "POST",
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    if (!response.ok) throw new Error(`COORDINATOR_REQUEST_FAILED_${response.status}`);
-    return response.json();
   }
 
   private async heartbeat(): Promise<void> {
@@ -146,9 +173,29 @@ export class AgentJobLoop {
   }
 
   private async pollOffers(): Promise<SignedJobOffer[]> {
-    const response = await this.request(`/v1/nodes/${this.options.nodeId}/offers`);
-    if (!response.ok) throw new Error(`OFFER_POLL_FAILED_${response.status}`);
-    return offerListSchema.parse(await response.json()).offers;
+    const response = await this.requestJson(
+      `/v1/nodes/${this.options.nodeId}/offers`,
+      {},
+      "OFFER_POLL_FAILED",
+    );
+    return offerListSchema.parse(response).offers;
+  }
+
+  private verifyTransitionOffer(input: unknown, expected: SignedJobOffer): SignedJobOffer {
+    const candidate = offerResponseSchema.parse(input).offer;
+    const verification = verifyCoordinatorOffer(candidate, this.options.coordinatorPublicKey);
+    if (
+      !verification.valid ||
+      candidate.id !== expected.id ||
+      canonicalizeOfferManifest(candidate.manifest) !== canonicalizeOfferManifest(expected.manifest)
+    ) {
+      throw new Error("COORDINATOR_OFFER_CHANGED");
+    }
+    return verification.offer;
+  }
+
+  private ensureNotStopped(): void {
+    if (this.stopped) throw new Error("AGENT_STOPPED");
   }
 
   private async handleOffer(untrustedOffer: SignedJobOffer): Promise<JobLoopOutcome> {
@@ -166,22 +213,29 @@ export class AgentJobLoop {
     }
 
     if (!offer.approvedAt) {
-      if (!(await this.options.approveOffer(offer))) {
+      const approved = await this.options.approveOffer(offer);
+      this.ensureNotStopped();
+      if (!approved) {
         return { offerId: offer.id, status: "DECLINED" };
       }
-      offer = offerResponseSchema.parse(
+      offer = this.verifyTransitionOffer(
         await this.postJson(`/v1/nodes/${this.options.nodeId}/offers/${offer.id}/approve`),
-      ).offer;
+        offer,
+      );
+      this.ensureNotStopped();
     }
 
-    offer = offerResponseSchema.parse(
+    offer = this.verifyTransitionOffer(
       await this.postJson(`/v1/nodes/${this.options.nodeId}/offers/${offer.id}/claim`, {
         nonce: offer.manifest.nonce,
         leaseSeconds: Math.min(300, Math.max(15, offer.manifest.resources.timeoutSeconds + 10)),
       }),
-    ).offer;
+      offer,
+    );
+    this.ensureNotStopped();
 
     await this.postJson(`/v1/nodes/${this.options.nodeId}/jobs/${offer.manifest.jobId}/start`);
+    this.ensureNotStopped();
     const controller = new AbortController();
     this.running.set(offer.manifest.jobId, controller);
     await this.heartbeat().catch(() => undefined);
@@ -223,9 +277,12 @@ export class AgentJobLoop {
   }
 
   async runOnce(): Promise<JobLoopOutcome[]> {
+    if (this.stopped) return [];
     await this.heartbeat();
     const outcomes: JobLoopOutcome[] = [];
+    if (this.stopped) return outcomes;
     for (const offer of await this.pollOffers()) {
+      if (this.stopped) break;
       try {
         outcomes.push(await this.handleOffer(offer));
       } catch {
