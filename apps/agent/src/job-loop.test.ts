@@ -74,6 +74,77 @@ function signedOffer(
 }
 
 describe("Agent job loop", () => {
+  it.each([
+    ["heartbeat", "fetch"],
+    ["heartbeat", "body"],
+    ["offers", "fetch"],
+    ["offers", "body"],
+  ] as const)("bounds a stalled %s %s operation and aborts it", async (stage, stall) => {
+    vi.useFakeTimers();
+    try {
+      const { publicKey } = signedOffer();
+      let signal: AbortSignal | undefined;
+      const fetcher = vi.fn(async (input: string, init?: RequestInit) => {
+        const path = new URL(input).pathname;
+        if (path.endsWith(`/${stage}`)) {
+          signal = init?.signal ?? undefined;
+          if (stall === "fetch") return await new Promise<Response>(() => {});
+          const response = Response.json({});
+          vi.spyOn(response, "json").mockImplementation(() => new Promise(() => {}));
+          return response;
+        }
+        return Response.json({ node: { id: nodeId } });
+      });
+      const executor = { execute: vi.fn(), kill: vi.fn() };
+      const loop = new AgentJobLoop({
+        origin: "https://coordinator.example",
+        nodeId,
+        agentToken: "agent-token",
+        coordinatorPublicKey: publicKey,
+        runtime: {
+          dockerAvailable: true,
+          rootless: true,
+          canExecute: true,
+          executionMode: "ROOTLESS_LINUX",
+          accelerators: [],
+          isolationLevels: ["CONTAINER_BASELINE"],
+          reasons: [],
+        },
+        executor,
+        approveOffer: async () => true,
+        fetcher,
+        heartbeat: () => ({
+          availableCpu: 4,
+          availableMemoryMb: 4096,
+          activeJobs: 0,
+          status: "ONLINE",
+        }),
+      });
+      let outcome = "pending";
+      let error: unknown;
+      void loop.runOnce().then(
+        () => {
+          outcome = "resolved";
+        },
+        (cause) => {
+          outcome = "rejected";
+          error = cause;
+        },
+      );
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(outcome).toBe("pending");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(outcome).toBe("rejected");
+      expect(error).toEqual(new Error("COORDINATOR_REQUEST_TIMEOUT"));
+      expect(signal?.aborted).toBe(true);
+      expect(executor.execute).not.toHaveBeenCalled();
+      expect(loop.activeJobCount()).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each(["heartbeat", "offers", "prompt", "approve", "claim", "start"])(
     "does not start execution or process another offer after Stop during %s",
     async (stage) => {

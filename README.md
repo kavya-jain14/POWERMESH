@@ -154,6 +154,8 @@ Demo click path (offline demo, about 2 minutes):
 
 ## Quality checks
 
+The provider Agent bounds each coordinator request to 15 seconds, including reading its JSON response body. A stalled call is aborted and the polling loop can recover instead of waiting indefinitely. An already-sent mutation may have reached the coordinator before a timeout; the deadline does not imply that it was rolled back. Individual cancellation while an offer is still awaiting approval remains a separate integration boundary.
+
 ```bash
 pnpm check
 ```

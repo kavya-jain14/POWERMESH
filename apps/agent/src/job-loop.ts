@@ -21,6 +21,7 @@ type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
 
 const offerListSchema = z.object({ offers: z.array(signedJobOfferSchema) });
 const offerResponseSchema = z.object({ offer: signedJobOfferSchema });
+const COORDINATOR_REQUEST_TIMEOUT_MS = 15_000;
 
 export type JobLoopOutcome =
   | { offerId: string; status: "DECLINED" }
@@ -122,20 +123,45 @@ export class AgentJobLoop {
     return this.running.size;
   }
 
-  private async request(path: string, init: RequestInit = {}): Promise<Response> {
+  private async requestJson(
+    path: string,
+    init: RequestInit = {},
+    failureCode = "COORDINATOR_REQUEST_FAILED",
+  ): Promise<unknown> {
     const headers = new Headers(init.headers);
     headers.set("authorization", `Bearer ${this.options.agentToken}`);
     if (init.body) headers.set("content-type", "application/json");
-    return this.fetcher(`${this.options.origin}${path}`, { ...init, headers });
+    const controller = new AbortController();
+    let timer!: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error("COORDINATOR_REQUEST_TIMEOUT"));
+        controller.abort();
+      }, COORDINATOR_REQUEST_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([
+        (async () => {
+          const response = await this.fetcher(`${this.options.origin}${path}`, {
+            ...init,
+            headers,
+            signal: controller.signal,
+          });
+          if (!response.ok) throw new Error(`${failureCode}_${response.status}`);
+          return await response.json();
+        })(),
+        timeout,
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private async postJson(path: string, body?: unknown): Promise<unknown> {
-    const response = await this.request(path, {
+    return this.requestJson(path, {
       method: "POST",
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    if (!response.ok) throw new Error(`COORDINATOR_REQUEST_FAILED_${response.status}`);
-    return response.json();
   }
 
   private async heartbeat(): Promise<void> {
@@ -147,9 +173,12 @@ export class AgentJobLoop {
   }
 
   private async pollOffers(): Promise<SignedJobOffer[]> {
-    const response = await this.request(`/v1/nodes/${this.options.nodeId}/offers`);
-    if (!response.ok) throw new Error(`OFFER_POLL_FAILED_${response.status}`);
-    return offerListSchema.parse(await response.json()).offers;
+    const response = await this.requestJson(
+      `/v1/nodes/${this.options.nodeId}/offers`,
+      {},
+      "OFFER_POLL_FAILED",
+    );
+    return offerListSchema.parse(response).offers;
   }
 
   private verifyTransitionOffer(input: unknown, expected: SignedJobOffer): SignedJobOffer {
